@@ -171,8 +171,16 @@
 <div id="app"></div>
 <div class="toast" id="toast"></div>
 
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
+
+  /* ---------------- Supabase (config) ---------------- */
+  // Preencha com os dados do SEU projeto Supabase (Settings > API).
+  const SUPABASE_URL = 'https://trddqvqbtvvwjqlgswwo.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_EHe9qhOcTVytZSNDzKB_nw_5qlCNq4v';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let session = null;
 
   /* ---------------- Storage ---------------- */
   const STORAGE_KEY = 'financas-app-data-v1';
@@ -204,22 +212,35 @@
 
   function scheduleSave(){
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(()=>{
+    saveTimer = setTimeout(async ()=>{
       try{
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      }catch(e){ console.error('Falha ao salvar', e); showToast('Não consegui salvar agora. Tente de novo.'); }
-    }, 250);
+        if(!session) return;
+        const { error } = await supabaseClient
+          .from('app_state')
+          .upsert({ user_id: session.user.id, data: state, updated_at: new Date().toISOString() });
+        if(error) throw error;
+      }catch(e){ console.error('Falha ao salvar', e); showToast('Não consegui salvar agora. Verifique sua internet.'); }
+    }, 400);
   }
 
   async function loadState(){
     try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(raw){
-        const parsed = JSON.parse(raw);
-        state = Object.assign(defaultState(), parsed);
+      const { data, error } = await supabaseClient
+        .from('app_state')
+        .select('data')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+      if(error) throw error;
+      if(data && data.data){
+        state = Object.assign(defaultState(), data.data);
+      } else {
+        state = defaultState();
+        await supabaseClient.from('app_state').insert({ user_id: session.user.id, data: state });
       }
     }catch(e){
-      // chave não existe ainda — mantém default
+      console.error('Erro ao carregar dados', e);
+      showToast('Não consegui carregar seus dados agora.');
+      state = defaultState();
     }
     // migração: garante categoria de Contas Fixas e listas novas em dados antigos
     if(!state.categories.some(c=>c.id==='ccontas')){
@@ -228,6 +249,57 @@
     if(!state.recurringBills) state.recurringBills = [];
     if(!state.billPayments) state.billPayments = [];
     render();
+  }
+
+  /* ---------------- Autenticação ---------------- */
+  function renderAuthScreen(msg){
+    document.getElementById('app').innerHTML = `
+      <div style="min-height:100vh;width:100%;display:flex;align-items:center;justify-content:center;padding:20px;">
+        <div class="card" style="max-width:340px;width:100%;">
+          <div class="brand" style="padding:0 0 14px;"><b>Finanças</b></div>
+          ${msg?`<div class="hint" style="color:var(--danger);margin-bottom:12px;">${msg}</div>`:''}
+          <label class="field">E-mail</label>
+          <input type="text" id="authEmail" placeholder="seu@email.com" />
+          <label class="field">Senha</label>
+          <input type="password" id="authPassword" placeholder="mínimo 6 caracteres" />
+          <button class="btn block" style="margin-top:16px;" id="btnLogin">Entrar</button>
+          <button class="btn secondary block" style="margin-top:8px;" id="btnSignup">Criar conta</button>
+          <div class="hint" style="margin-top:12px;">Use o mesmo e-mail e senha em todos os aparelhos pra sincronizar seus dados.</div>
+        </div>
+      </div>
+    `;
+    document.getElementById('btnLogin').addEventListener('click', doLogin);
+    document.getElementById('btnSignup').addEventListener('click', doSignup);
+  }
+
+  async function doLogin(){
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    if(!email || !password){ renderAuthScreen('Preencha e-mail e senha.'); return; }
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if(error){ renderAuthScreen('Não consegui entrar: ' + error.message); return; }
+    session = data.session;
+    await loadState();
+  }
+
+  async function doSignup(){
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    if(!email || password.length<6){ renderAuthScreen('Informe um e-mail válido e senha com 6+ caracteres.'); return; }
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+    if(error){ renderAuthScreen('Não consegui criar conta: ' + error.message); return; }
+    if(data.session){
+      session = data.session;
+      await loadState();
+    } else {
+      renderAuthScreen('Conta criada! Verifique seu e-mail para confirmar antes de entrar.');
+    }
+  }
+
+  async function doLogout(){
+    await supabaseClient.auth.signOut();
+    session = null;
+    renderAuthScreen();
   }
 
   /* ---------------- Helpers ---------------- */
@@ -848,6 +920,12 @@
       <div class="subtitle">Tudo aqui é editável — nada fica travado no código.</div>
 
       <div class="card">
+        <h3>Conta</h3>
+        <div class="meta">Conectado como <b>${session.user.email}</b></div>
+        <button class="btn secondary" style="margin-top:10px;" id="btnLogout">Sair</button>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
         <h3>Metas</h3>
         <table class="cfg" id="goalsTable">
           <tr><th>Nome</th><th>Valor alvo</th><th>Ativa</th><th></th></tr>
@@ -956,6 +1034,8 @@
       scheduleSave(); showToast('Categorias salvas.');
     });
 
+    document.getElementById('btnLogout').addEventListener('click', doLogout);
+
     document.getElementById('resetAll').addEventListener('click', ()=>{
       if(confirm('Isso vai apagar todos os lançamentos, metas e configurações. Tem certeza?')){
         state = defaultState();
@@ -964,7 +1044,22 @@
     });
   }
 
-  loadState();
+  async function boot(){
+    const { data } = await supabaseClient.auth.getSession();
+    session = data.session;
+    if(session){
+      await loadState();
+    } else {
+      renderAuthScreen();
+    }
+    supabaseClient.auth.onAuthStateChange((event)=>{
+      if(event === 'SIGNED_OUT'){
+        session = null;
+        renderAuthScreen();
+      }
+    });
+  }
+  boot();
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', ()=>{
