@@ -193,7 +193,9 @@
       ],
       paymentMethods: ['Dinheiro livre','Cartão de crédito','Pix','Dinheiro físico'],
       incomeEntries: [],
-      expenseEntries: []
+      expenseEntries: [],
+      recurringBills: [],
+      billPayments: []
     };
   }
 
@@ -219,6 +221,12 @@
     }catch(e){
       // chave não existe ainda — mantém default
     }
+    // migração: garante categoria de Contas Fixas e listas novas em dados antigos
+    if(!state.categories.some(c=>c.id==='ccontas')){
+      state.categories.push({id:'ccontas', name:'Contas Fixas', cap:0});
+    }
+    if(!state.recurringBills) state.recurringBills = [];
+    if(!state.billPayments) state.billPayments = [];
     render();
   }
 
@@ -340,6 +348,7 @@
   const TABS = [
     {id:'painel', label:'Painel', ico:'◆'},
     {id:'lancar', label:'Lançar', ico:'＋'},
+    {id:'contas', label:'Contas', ico:'🧾'},
     {id:'graficos', label:'Gráficos', ico:'▤'},
     {id:'calendario', label:'Calendário', ico:'▦'},
     {id:'relatorio', label:'Relatório', ico:'▤'},
@@ -367,6 +376,7 @@
   function renderTab(main){
     if(activeTab==='painel') return renderPainel(main);
     if(activeTab==='lancar') return renderLancar(main);
+    if(activeTab==='contas') return renderContas(main);
     if(activeTab==='graficos') return renderGraficos(main);
     if(activeTab==='calendario') return renderCalendario(main);
     if(activeTab==='relatorio') return renderRelatorio(main);
@@ -489,6 +499,140 @@
   }
 
   /* ---------------- Lançar ---------------- */
+  /* ---------------- Contas mensais ---------------- */
+  function billStatusForMonth(billId, ym){
+    return state.billPayments.find(p=>p.billId===billId && p.month===ym);
+  }
+
+  function markBillPaid(bill, ym){
+    const amount = Number(bill.amount)||0;
+    const date = todayISO();
+    const expenseId = uid();
+    state.expenseEntries.push({id:expenseId, category:'ccontas', payment:'Dinheiro livre', amount, note:bill.name, date});
+    state.billPayments.push({id:uid(), billId:bill.id, month:ym, paid:true, paidDate:date, amount, expenseId});
+    scheduleSave();
+  }
+
+  function undoBillPaid(bill, ym){
+    const rec = billStatusForMonth(bill.id, ym);
+    if(!rec) return;
+    state.expenseEntries = state.expenseEntries.filter(e=>e.id!==rec.expenseId);
+    state.billPayments = state.billPayments.filter(p=>p.id!==rec.id);
+    scheduleSave();
+  }
+
+  function editPaidAmount(bill, ym){
+    const rec = billStatusForMonth(bill.id, ym);
+    if(!rec) return;
+    const novo = prompt('Valor pago (R$):', rec.amount);
+    if(novo===null) return;
+    const val = Number(String(novo).replace(',','.'));
+    if(!val || val<=0){ showToast('Valor inválido.'); return; }
+    rec.amount = val;
+    const exp = state.expenseEntries.find(e=>e.id===rec.expenseId);
+    if(exp) exp.amount = val;
+    scheduleSave();
+  }
+
+  function renderContas(main){
+    const ym = todayISO().slice(0,7);
+    const todayDay = new Date().getDate();
+    const totalEsperado = state.recurringBills.reduce((s,b)=>s+Number(b.amount||0),0);
+    let totalPagoMes = 0;
+
+    const rows = state.recurringBills.map(b=>{
+      const rec = billStatusForMonth(b.id, ym);
+      if(rec) totalPagoMes += Number(rec.amount||0);
+      const venceuNaoPago = !rec && todayDay > b.dueDay;
+      let statusHtml;
+      if(rec){
+        statusHtml = `<span class="tag">Pago ${fmt(rec.amount)} em ${rec.paidDate.slice(8,10)}/${rec.paidDate.slice(5,7)}</span>
+          <button class="icon-btn" style="color:var(--muted)" data-edit-paid="${b.id}" title="Ajustar valor">✎</button>
+          <button class="icon-btn" data-undo="${b.id}" title="Desfazer">↺</button>`;
+      } else if(venceuNaoPago){
+        statusHtml = `<span class="tag danger">Venceu dia ${b.dueDay}</span>
+          <button class="btn small" data-pay="${b.id}">Marcar como pago</button>`;
+      } else {
+        statusHtml = `<span class="tag warn">Pendente · vence dia ${b.dueDay}</span>
+          <button class="btn small" data-pay="${b.id}">Marcar como pago</button>`;
+      }
+      return `<div class="list-item" data-bill="${b.id}">
+        <div>
+          <div><b>${b.name}</b> <button class="icon-btn" data-del-bill="${b.id}" style="font-size:12px;" title="Excluir conta">✕</button></div>
+          <div class="meta">${fmt(b.amount)} esperado</div>
+        </div>
+        <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          ${statusHtml}
+        </div>
+      </div>`;
+    }).join('');
+
+    main.innerHTML = `
+      <h1 class="page-title">Contas mensais</h1>
+      <div class="subtitle">Suas contas fixas — água, luz, internet, aluguel...</div>
+
+      <div class="grid cols-2">
+        <div class="card"><h3>Total esperado/mês</h3><div class="money sm">${fmt(totalEsperado)}</div></div>
+        <div class="card"><h3>Já pago este mês</h3><div class="money sm pos">${fmt(totalPagoMes)}</div></div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Suas contas</h3>
+        ${state.recurringBills.length===0 ? '<div class="empty">Nenhuma conta cadastrada ainda.</div>' : rows}
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Adicionar nova conta</h3>
+        <label class="field">Nome</label>
+        <input type="text" id="billName" placeholder="ex: Conta de luz" />
+        <label class="field">Valor esperado (R$)</label>
+        <input type="number" id="billAmount" step="0.01" placeholder="0,00" />
+        <label class="field">Dia do vencimento</label>
+        <input type="number" id="billDueDay" min="1" max="31" placeholder="ex: 10" />
+        <button class="btn block" style="margin-top:16px;" id="btnAddBill">+ Adicionar conta</button>
+      </div>
+    `;
+
+    main.querySelectorAll('[data-pay]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const bill = state.recurringBills.find(b=>b.id===btn.dataset.pay);
+      markBillPaid(bill, ym);
+      showToast('Conta marcada como paga.');
+      renderContas(main);
+    }));
+    main.querySelectorAll('[data-undo]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const bill = state.recurringBills.find(b=>b.id===btn.dataset.undo);
+      undoBillPaid(bill, ym);
+      showToast('Pagamento desfeito.');
+      renderContas(main);
+    }));
+    main.querySelectorAll('[data-edit-paid]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const bill = state.recurringBills.find(b=>b.id===btn.dataset.editPaid);
+      editPaidAmount(bill, ym);
+      renderContas(main);
+    }));
+    main.querySelectorAll('[data-del-bill]').forEach(btn=>btn.addEventListener('click', ()=>{
+      if(confirm('Remover essa conta? Pagamentos já registrados continuam no histórico de gastos.')){
+        state.recurringBills = state.recurringBills.filter(b=>b.id!==btn.dataset.delBill);
+        scheduleSave();
+        renderContas(main);
+      }
+    }));
+
+    document.getElementById('btnAddBill').addEventListener('click', ()=>{
+      const name = document.getElementById('billName').value.trim();
+      const amount = Number(document.getElementById('billAmount').value);
+      const dueDay = Number(document.getElementById('billDueDay').value);
+      if(!name){ showToast('Dê um nome pra conta.'); return; }
+      if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
+      if(!dueDay || dueDay<1 || dueDay>31){ showToast('Dia de vencimento inválido.'); return; }
+      state.recurringBills.push({id:uid(), name, amount, dueDay});
+      scheduleSave();
+      showToast('Conta adicionada.');
+      renderContas(main);
+    });
+  }
+
+  /* ---------------- Lançar ---------------- */
   function renderLancar(main){
     main.innerHTML = `
       <h1 class="page-title">Lançar</h1>
@@ -509,10 +653,6 @@
         <label class="field">Categoria</label>
         <select id="expCategory">
           ${state.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-        <label class="field">Pago com</label>
-        <select id="expPayment">
-          ${state.paymentMethods.map(p=>`<option value="${p}">${p}</option>`).join('')}
         </select>
         <label class="field">Valor (R$)</label>
         <input type="number" id="expAmount" step="0.01" placeholder="0,00" />
@@ -555,7 +695,6 @@
       state.expenseEntries.push({
         id: uid(),
         category: document.getElementById('expCategory').value,
-        payment: document.getElementById('expPayment').value,
         amount,
         note: document.getElementById('expNote').value,
         date: document.getElementById('expDate').value
@@ -749,18 +888,6 @@
         <button class="btn small add-row" id="saveCats" style="margin-left:8px;">Salvar categorias</button>
       </div>
 
-      <div class="card" style="margin-top:14px;">
-        <h3>Formas de pagamento</h3>
-        <table class="cfg" id="payTable">
-          <tr>${state.paymentMethods.map((p,i)=>`<th></th>`).join('')}</tr>
-          <tr>
-            ${state.paymentMethods.map((p,i)=>`<td><input type="text" class="p-name" data-i="${i}" value="${p}"/></td>`).join('')}
-          </tr>
-        </table>
-        <button class="btn secondary small add-row" id="addPay">+ Forma de pagamento</button>
-        <button class="btn small add-row" id="savePay" style="margin-left:8px;">Salvar</button>
-      </div>
-
       <div class="card" style="margin-top:14px;border-color:var(--danger);">
         <h3 style="color:var(--danger);">Zona de risco</h3>
         <button class="btn danger" id="resetAll">Apagar todos os dados</button>
@@ -827,17 +954,6 @@
         c.cap = Number(tr.querySelector('.c-cap').value)||0;
       });
       scheduleSave(); showToast('Categorias salvas.');
-    });
-
-    document.getElementById('addPay').addEventListener('click', ()=>{
-      state.paymentMethods.push('Nova forma');
-      scheduleSave(); renderConfig(main);
-    });
-    document.getElementById('savePay').addEventListener('click', ()=>{
-      const inputs = main.querySelectorAll('.p-name');
-      const vals = Array.from(inputs).map(i=>i.value).filter(v=>v.trim()!=='');
-      state.paymentMethods = vals;
-      scheduleSave(); showToast('Formas de pagamento salvas.');
     });
 
     document.getElementById('resetAll').addEventListener('click', ()=>{
