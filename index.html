@@ -171,7 +171,7 @@
 <div id="app"></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
 
@@ -560,7 +560,8 @@
         ${recentes.length===0? '<div class="empty">Nenhum lançamento ainda.</div>' :
           recentes.map(e=>{
             if(e.kind==='in'){
-              return `<div class="list-item"><div><b>Dia trabalhado</b><div class="meta">${e.date}</div></div><div class="money sm pos">+${fmt(e.amount)}</div></div>`;
+              const label = e.source==='mensal' ? 'Salário Mensal' : 'Diária do Free';
+              return `<div class="list-item"><div><b>${label}</b><div class="meta">${e.date}${e.note? ' · '+e.note:''}</div></div><div class="money sm pos">+${fmt(e.amount)}</div></div>`;
             }
             const cat = state.categories.find(c=>c.id===e.category);
             return `<div class="list-item"><div><b>${cat?cat.name:'Gasto'}</b><div class="meta">${e.date}${e.note? ' · '+e.note:''}</div></div><div class="money sm neg">-${fmt(e.amount)}</div></div>`;
@@ -708,16 +709,32 @@
   function renderLancar(main){
     main.innerHTML = `
       <h1 class="page-title">Lançar</h1>
-      <div class="subtitle">Registre um dia trabalhado ou um gasto.</div>
+      <div class="subtitle">Registre uma receita ou um gasto.</div>
 
       <div class="card">
-        <h3>Dia trabalhado</h3>
+        <h3>Diária do Free</h3>
+        <div class="hint" style="margin-bottom:10px;">Valores recebidos em trabalhos freelancer.</div>
         <label class="field">Valor recebido (R$)</label>
-        <input type="number" id="incAmount" step="0.01" placeholder="0,00" />
+        <input type="number" id="freAmount" step="0.01" placeholder="0,00" />
         <label class="field">Data</label>
-        <input type="date" id="incDate" value="${todayISO()}" />
-        <div class="hint" id="splitPreview"></div>
-        <button class="btn block" style="margin-top:16px;" id="btnSaveIncome">+ Registrar</button>
+        <input type="date" id="freDate" value="${todayISO()}" />
+        <label class="field">Observação (opcional)</label>
+        <input type="text" id="freNote" placeholder="ex: edição de vídeo pro cliente X" />
+        <div class="hint" id="freSplitPreview"></div>
+        <button class="btn block" style="margin-top:16px;" id="btnSaveFree">+ Registrar diária</button>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3>Salário Mensal</h3>
+        <div class="hint" style="margin-bottom:10px;">Renda fixa mensal (CLT, contrato, etc.).</div>
+        <label class="field">Valor do salário (R$)</label>
+        <input type="number" id="salAmount" step="0.01" placeholder="0,00" />
+        <label class="field">Mês de referência</label>
+        <input type="month" id="salMonth" value="${todayISO().slice(0,7)}" />
+        <label class="field">Observação (opcional)</label>
+        <input type="text" id="salNote" placeholder="ex: salário empresa Y" />
+        <div class="hint" id="salSplitPreview"></div>
+        <button class="btn block" style="margin-top:16px;" id="btnSaveSalario">+ Registrar salário</button>
       </div>
 
       <div class="card" style="margin-top:16px;">
@@ -736,29 +753,58 @@
       </div>
     `;
 
-    function updatePreview(){
-      const v = Number(document.getElementById('incAmount').value)||0;
+    function previewSplit(amount){
       const p = state.potePercents;
-      const meta = v*(p.meta/100), reserva = v*(p.reserva/100), livre = v*(p.livre/100);
-      document.getElementById('splitPreview').textContent =
-        `Divisão automática: Meta ${fmt(meta)} · Reserva ${fmt(reserva)} · Livre ${fmt(livre)}`;
+      const meta = amount*(p.meta/100), reserva = amount*(p.reserva/100), livre = amount*(p.livre/100);
+      return `Divisão automática: Meta ${fmt(meta)} · Reserva ${fmt(reserva)} · Livre ${fmt(livre)}`;
     }
-    document.getElementById('incAmount').addEventListener('input', updatePreview);
-    updatePreview();
 
-    document.getElementById('btnSaveIncome').addEventListener('click', ()=>{
-      const amount = Number(document.getElementById('incAmount').value);
-      const date = document.getElementById('incDate').value;
+    function updateFreePreview(){
+      const v = Number(document.getElementById('freAmount').value)||0;
+      document.getElementById('freSplitPreview').textContent = previewSplit(v);
+    }
+    document.getElementById('freAmount').addEventListener('input', updateFreePreview);
+    updateFreePreview();
+
+    function updateSalPreview(){
+      const v = Number(document.getElementById('salAmount').value)||0;
+      document.getElementById('salSplitPreview').textContent = previewSplit(v);
+    }
+    document.getElementById('salAmount').addEventListener('input', updateSalPreview);
+    updateSalPreview();
+
+    document.getElementById('btnSaveFree').addEventListener('click', ()=>{
+      const amount = Number(document.getElementById('freAmount').value);
+      const date = document.getElementById('freDate').value;
+      const note = document.getElementById('freNote').value.trim();
       if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
+      if(!date){ showToast('Informe a data.'); return; }
       const p = state.potePercents;
       state.incomeEntries.push({
-        id: uid(), amount, date,
+        id: uid(), amount, date, note, source: 'freela',
         split: { meta: amount*(p.meta/100), reserva: amount*(p.reserva/100), livre: amount*(p.livre/100) }
       });
       scheduleSave();
-      showToast('Dia trabalhado registrado.');
+      showToast('Diária registrada.');
+      activeTab='lancar';
       render();
-      activeTab='lancar'; // manter na aba
+    });
+
+    document.getElementById('btnSaveSalario').addEventListener('click', ()=>{
+      const amount = Number(document.getElementById('salAmount').value);
+      const monthVal = document.getElementById('salMonth').value;
+      const note = document.getElementById('salNote').value.trim();
+      if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
+      if(!monthVal){ showToast('Informe o mês de referência.'); return; }
+      const p = state.potePercents;
+      state.incomeEntries.push({
+        id: uid(), amount, date: monthVal+'-01', note, source: 'mensal',
+        split: { meta: amount*(p.meta/100), reserva: amount*(p.reserva/100), livre: amount*(p.livre/100) }
+      });
+      scheduleSave();
+      showToast('Salário mensal registrado.');
+      activeTab='lancar';
+      render();
     });
 
     document.getElementById('btnSaveExpense').addEventListener('click', ()=>{
