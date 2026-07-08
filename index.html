@@ -104,6 +104,19 @@
   .wave{animation:waveMove 6s linear infinite;}
   @keyframes waveMove{ from{transform:translateX(0);} to{transform:translateX(-60px);} }
 
+  /* heart mood widget */
+  @keyframes heartBeat{ 0%,100%{transform:scale(1);} 50%{transform:scale(1.16);} }
+  @keyframes heartCritical{
+    0%{transform:scale(1) translateX(0);}
+    10%{transform:scale(1.2) translateX(-2px);}
+    20%{transform:scale(1.05) translateX(2px);}
+    30%{transform:scale(1.2) translateX(-2px);}
+    45%{transform:scale(1) translateX(0);}
+    100%{transform:scale(1) translateX(0);}
+  }
+  .heart-pulse{ display:inline-block; }
+  .heart-msg{ transition:opacity .3s ease; }
+
   .btn{background:var(--primary);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-weight:700;font-size:14px;}
   .btn:hover{background:var(--primary-dark);}
   .btn.secondary{background:#fff;color:var(--primary-dark);border:1px solid var(--primary);}
@@ -349,6 +362,68 @@
     return total/distinctDays;
   }
 
+  /* ---------------- Coração motivacional ---------------- */
+  const HEART_MOODS = {
+    excelente: {
+      label: 'Excelente',
+      color: '#1B7A43',
+      duration: 2.6,
+      vibrate: false,
+      messages: [
+        'Você está construindo seu futuro.',
+        'Continue assim.',
+        'Seu esforço está valendo a pena.',
+        'Você está cada vez mais próximo da liberdade financeira.'
+      ]
+    },
+    boa: {
+      label: 'Boa',
+      color: '#2563A6',
+      duration: 1.8,
+      vibrate: false,
+      messages: [
+        'Continue consistente.',
+        'Você está vencendo a si mesmo.',
+        'Não perca o ritmo.'
+      ]
+    },
+    atencao: {
+      label: 'Atenção',
+      color: '#C9871E',
+      duration: 1.1,
+      vibrate: false,
+      messages: [
+        'Atenção aos gastos, você está extrapolando.',
+        'Revise suas prioridades.',
+        'Ainda dá tempo de corrigir.'
+      ]
+    },
+    critica: {
+      label: 'Crítica',
+      color: '#C1432B',
+      duration: 0.55,
+      vibrate: true,
+      messages: [
+        'Você sabe que pode fazer melhor.',
+        'Cada gasto impulsivo afasta suas metas.',
+        'Sua disciplina está sendo colocada à prova e você está perdendo.',
+        'O futuro que você quer depende das escolhas de hoje, vamos mudar né.',
+        'Ainda dá tempo de mudar essa situação.'
+      ]
+    }
+  };
+
+  function computeMood(){
+    const t = computeTotals();
+    const livreIn = state.incomeEntries.reduce((s,e)=>s+(e.split.livre||0),0);
+    if(t.livre < 0) return 'critica';
+    if(livreIn <= 0) return 'boa';
+    const ratio = t.livre/livreIn;
+    if(ratio < 0.2) return 'atencao';
+    if(ratio < 0.5) return 'boa';
+    return 'excelente';
+  }
+
   function streakNoAzul(){
     // percorre dias com QUALQUER lançamento, do mais recente pro mais antigo
     const daySet = {};
@@ -417,6 +492,7 @@
 
   /* ---------------- Render shell ---------------- */
   let activeTab = 'painel';
+  let heartMsgInterval = null;
   const TABS = [
     {id:'painel', label:'Painel', ico:'◆'},
     {id:'lancar', label:'Lançar', ico:'＋'},
@@ -440,7 +516,7 @@
       </nav>
     `;
     document.querySelectorAll('[data-tab]').forEach(b=>{
-      b.addEventListener('click', ()=>{ activeTab = b.dataset.tab; render(); });
+      b.addEventListener('click', ()=>{ clearInterval(heartMsgInterval); activeTab = b.dataset.tab; render(); });
     });
     renderTab(document.getElementById('main'));
   }
@@ -489,7 +565,8 @@
     const greet = hour<12?'Bom dia':(hour<18?'Boa tarde':'Boa noite');
     const gastoMes = monthExpenses(ym).reduce((s,e)=>s+Number(e.amount||0),0);
     const media = avgSpendPerDay(ym);
-    const streak = streakNoAzul();
+    const mood = computeMood();
+    const moodCfg = HEART_MOODS[mood];
     const insights = buildInsights();
 
     const recentes = [...state.incomeEntries.map(e=>({...e,kind:'in'})), ...state.expenseEntries.map(e=>({...e,kind:'out'}))]
@@ -507,7 +584,7 @@
         <div class="jar-wrap"><div class="jar-label">Meta</div><div class="jar-value">${fmt(t.meta)}</div></div>
       </div>
 
-      <div class="grid cols-2" style="margin-top:18px;">
+      <div class="grid cols-3" style="margin-top:18px;">
         <div class="card">
           <h3>Saldo livre</h3>
           <div class="money ${t.livre<0?'neg':'pos'}">${fmt(t.livre)}</div>
@@ -521,10 +598,15 @@
           <h3>Média de gasto/dia</h3>
           <div class="money sm">${fmt(media)}</div>
         </div>
-        <div class="card">
-          <h3>Dias seguidos no azul</h3>
-          <div class="money sm">${streak}</div>
-        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;text-align:center;">
+        <h3>Como estão suas finanças</h3>
+        <svg id="heartIcon" class="heart-pulse" style="animation:${moodCfg.vibrate ? `heartCritical ${moodCfg.duration}s ease-in-out infinite` : `heartBeat ${moodCfg.duration}s ease-in-out infinite`};" width="60" height="54" viewBox="0 0 32 29">
+          <path d="M16 29 C16 29 0 18.5 0 8.8 C0 3 4.4 0 8.6 0 C11.6 0 14.4 1.7 16 4.3 C17.6 1.7 20.4 0 23.4 0 C27.6 0 32 3 32 8.8 C32 18.5 16 29 16 29 Z" fill="${moodCfg.color}"/>
+        </svg>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${moodCfg.color};margin-top:8px;">${moodCfg.label}</div>
+        <div id="heartMsg" class="heart-msg" style="font-weight:700;margin-top:6px;color:var(--ink);min-height:20px;font-size:14px;"></div>
       </div>
 
       <div class="grid cols-2" style="margin-top:14px;">
@@ -569,6 +651,26 @@
         }
       </div>
     `;
+
+    clearInterval(heartMsgInterval);
+    const heartMsgEl = document.getElementById('heartMsg');
+    let msgIndex = 0;
+    function showNextHeartMessage(){
+      if(!heartMsgEl) return;
+      heartMsgEl.style.opacity = '0';
+      setTimeout(()=>{
+        heartMsgEl.textContent = moodCfg.messages[msgIndex % moodCfg.messages.length];
+        heartMsgEl.style.opacity = '1';
+        msgIndex++;
+      }, 250);
+    }
+    heartMsgEl.textContent = moodCfg.messages[0];
+    msgIndex = 1;
+    heartMsgInterval = setInterval(showNextHeartMessage, 3800);
+
+    if(moodCfg.vibrate && navigator.vibrate){
+      try{ navigator.vibrate([80,40,80]); }catch(e){}
+    }
   }
 
   /* ---------------- Lançar ---------------- */
