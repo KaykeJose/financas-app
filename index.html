@@ -720,7 +720,7 @@
         <input type="date" id="freDate" value="${todayISO()}" />
         <label class="field">Observação (opcional)</label>
         <input type="text" id="freNote" placeholder="ex: edição de vídeo pro cliente X" />
-        <div class="hint" style="margin-top:14px;">Divisão sugerida — edite Meta e Emergência se quiser, o Livre recalcula sozinho.</div>
+        <div class="hint" style="margin-top:14px;">Informe manualmente quanto vai pra Meta e quanto pra Emergência — o Livre calcula sozinho.</div>
         <div class="grid cols-3" style="margin-top:8px;">
           <div><label class="field">Meta (R$)</label><input type="number" id="freMeta" step="0.01" value="0"/></div>
           <div><label class="field">Emergência (R$)</label><input type="number" id="freReserva" step="0.01" value="0"/></div>
@@ -738,7 +738,7 @@
         <input type="month" id="salMonth" value="${todayISO().slice(0,7)}" />
         <label class="field">Observação (opcional)</label>
         <input type="text" id="salNote" placeholder="ex: salário empresa Y" />
-        <div class="hint" style="margin-top:14px;">Divisão sugerida — edite Meta e Emergência se quiser, o Livre recalcula sozinho.</div>
+        <div class="hint" style="margin-top:14px;">Informe manualmente quanto vai pra Meta e quanto pra Emergência — o Livre calcula sozinho.</div>
         <div class="grid cols-3" style="margin-top:8px;">
           <div><label class="field">Meta (R$)</label><input type="number" id="salMeta" step="0.01" value="0"/></div>
           <div><label class="field">Emergência (R$)</label><input type="number" id="salReserva" step="0.01" value="0"/></div>
@@ -788,10 +788,9 @@
       }
 
       function applyDefaults(){
-        const amount = getAmount();
-        const p = state.potePercents;
-        if(!manualMeta) metaEl.value = (amount*(p.meta/100)).toFixed(2);
-        if(!manualReserva) reservaEl.value = (amount*(p.reserva/100)).toFixed(2);
+        // 100% manual: não pré-preenche mais com percentual automático.
+        if(!manualMeta) metaEl.value = '0.00';
+        if(!manualReserva) reservaEl.value = '0.00';
         clampAndRender();
       }
 
@@ -991,7 +990,6 @@
 
   /* ---------------- Configurações ---------------- */
   function renderConfig(main){
-    const p = state.potePercents;
     main.innerHTML = `
       <h1 class="page-title">Configurações</h1>
       <div class="subtitle">Tudo aqui é editável — nada fica travado no código.</div>
@@ -1018,14 +1016,10 @@
       </div>
 
       <div class="card" style="margin-top:14px;">
-        <h3>Divisão automática da renda (%)</h3>
-        <div class="grid cols-3">
-          <div><label class="field">Meta</label><input type="number" id="pctMeta" value="${p.meta}"/></div>
-          <div><label class="field">Reserva</label><input type="number" id="pctReserva" value="${p.reserva}"/></div>
-          <div><label class="field">Livre</label><input type="number" id="pctLivre" value="${p.livre}"/></div>
-        </div>
-        <div class="hint" id="pctHint"></div>
-        <button class="btn secondary" style="margin-top:12px;" id="savePct">Salvar percentuais</button>
+        <h3>Ajustes</h3>
+        <div class="hint" style="margin-bottom:10px;">A divisão de renda agora é 100% manual (feita na hora de lançar). Use isso aqui se algum valor de Meta ou Reserva ficou errado — o valor volta pro Livre, nada é apagado do seu histórico.</div>
+        <button class="btn secondary" id="clearMeta">Zerar valor da Meta</button>
+        <button class="btn secondary" style="margin-left:8px;" id="clearReserva">Zerar valor da Reserva</button>
       </div>
 
       <div class="card" style="margin-top:14px;">
@@ -1049,17 +1043,21 @@
       </div>
     `;
 
-    function updatePctHint(){
-      const m = Number(document.getElementById('pctMeta').value)||0;
-      const r = Number(document.getElementById('pctReserva').value)||0;
-      const l = Number(document.getElementById('pctLivre').value)||0;
-      const sum = m+r+l;
-      const hint = document.getElementById('pctHint');
-      hint.textContent = `Soma atual: ${sum}%` + (sum!==100 ? ' — precisa somar 100%.' : ' ✓');
-      hint.style.color = sum!==100 ? 'var(--danger)' : 'var(--muted)';
+    function clearBucket(kind, label){
+      if(!confirm(`Isso vai zerar o valor total de ${label} e devolver esse dinheiro pro Livre. Nenhum lançamento será apagado. Continuar?`)) return;
+      state.incomeEntries.forEach(e=>{
+        const val = e.split[kind]||0;
+        if(val>0){
+          e.split.livre = (e.split.livre||0) + val;
+          e.split[kind] = 0;
+        }
+      });
+      scheduleSave();
+      showToast(`${label} zerada.`);
+      renderConfig(main);
     }
-    ['pctMeta','pctReserva','pctLivre'].forEach(id=>document.getElementById(id).addEventListener('input', updatePctHint));
-    updatePctHint();
+    document.getElementById('clearMeta').addEventListener('click', ()=> clearBucket('meta','Meta'));
+    document.getElementById('clearReserva').addEventListener('click', ()=> clearBucket('reserva','Reserva'));
 
     document.getElementById('addGoal').addEventListener('click', ()=>{
       state.goals.push({id:uid(), name:'Nova meta', target:1000});
@@ -1082,15 +1080,6 @@
       tr.querySelector('.g-active').addEventListener('change', ()=>{
         state.activeGoalId = tr.dataset.id; scheduleSave();
       });
-    });
-
-    document.getElementById('savePct').addEventListener('click', ()=>{
-      const m = Number(document.getElementById('pctMeta').value)||0;
-      const r = Number(document.getElementById('pctReserva').value)||0;
-      const l = Number(document.getElementById('pctLivre').value)||0;
-      if(m+r+l!==100){ showToast('Os percentuais precisam somar 100%.'); return; }
-      state.potePercents = {meta:m, reserva:r, livre:l};
-      scheduleSave(); showToast('Percentuais atualizados.');
     });
 
     document.getElementById('addCat').addEventListener('click', ()=>{
