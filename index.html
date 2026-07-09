@@ -497,18 +497,67 @@
     return arr;
   }
 
+  function prevMonthKey(ym){
+    const [y,m] = ym.split('-').map(Number);
+    const d = new Date(y, m-2, 1); // m is 1-indexed, JS month is 0-indexed -> m-1 is current, -1 more for previous
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  }
+
   function buildInsights(){
     const ym = todayISO().slice(0,7);
+    const pym = prevMonthKey(ym);
     const out = [];
+
+    // 1) tetos de categoria
     state.categories.forEach(c=>{
       if(c.cap>0){
         const spent = categorySpent(c.id, ym);
         const pct = spent/c.cap;
-        if(pct>=1) out.push({icon:'⚠️', text:`"${c.name}" já passou do teto do mês (${fmt(spent)} de ${fmt(c.cap)}).`});
-        else if(pct>=0.8) out.push({icon:'👀', text:`"${c.name}" já consumiu ${(pct*100).toFixed(0)}% do teto do mês.`});
+        if(pct>=1) out.push({icon:'⚠️', text:`"${c.name}" já passou do teto do mês (${fmt(spent)} de ${fmt(c.cap)}).`, weight:5});
+        else if(pct>=0.8) out.push({icon:'👀', text:`"${c.name}" já consumiu ${(pct*100).toFixed(0)}% do teto do mês.`, weight:3});
       }
     });
-    // dia da semana com mais gasto
+
+    // 2) categoria dominante do mês (concentração de gasto)
+    const gastoMesTotal = monthExpenses(ym).reduce((s,e)=>s+Number(e.amount||0),0);
+    if(gastoMesTotal>0){
+      const porCategoria = {};
+      monthExpenses(ym).forEach(e=>{ porCategoria[e.category] = (porCategoria[e.category]||0) + Number(e.amount||0); });
+      let domId=null, domVal=0;
+      Object.entries(porCategoria).forEach(([cid,val])=>{ if(val>domVal){ domVal=val; domId=cid; } });
+      if(domId){
+        const domPct = domVal/gastoMesTotal;
+        const cat = state.categories.find(c=>c.id===domId);
+        if(cat && domPct>=0.35){
+          out.push({icon:'🎯', text:`Você tá gastando muito em "${cat.name}" (${(domPct*100).toFixed(0)}% de tudo que gastou no mês). Vamos trocar esse foco?`, weight:6});
+        }
+      }
+    }
+
+    // 3) crescimento de categoria mês a mês
+    state.categories.forEach(c=>{
+      const atual = categorySpent(c.id, ym);
+      const anterior = categorySpent(c.id, pym);
+      if(anterior>=20 && atual>0){
+        const variacao = (atual-anterior)/anterior;
+        if(variacao>=0.4){
+          out.push({icon:'📈', text:`"${c.name}" subiu ${(variacao*100).toFixed(0)}% em relação ao mês passado (${fmt(anterior)} → ${fmt(atual)}).`, weight:4});
+        }
+      }
+    });
+
+    // 4) proporção gasto/renda do mês
+    const rendaMes = monthIncome(ym).reduce((s,e)=>s+Number(e.amount||0),0);
+    if(rendaMes>0){
+      const razao = gastoMesTotal/rendaMes;
+      if(razao>=0.9){
+        out.push({icon:'🚨', text:`Você já gastou ${(razao*100).toFixed(0)}% de tudo que recebeu este mês. Sobra pouco pra Meta e Reserva.`, weight:6});
+      } else if(razao<=0.5 && gastoMesTotal>0){
+        out.push({icon:'👏', text:`Você gastou só ${(razao*100).toFixed(0)}% do que recebeu este mês — ótima margem pra guardar mais.`, weight:2});
+      }
+    }
+
+    // 5) dia da semana com mais gasto
     const exps = state.expenseEntries;
     if(exps.length>=5){
       const byDow = [0,0,0,0,0,0,0];
@@ -517,10 +566,11 @@
       if(max>0){
         const idx = byDow.indexOf(max);
         const dows = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
-        out.push({icon:'📅', text:`${dows[idx]} costuma ser o dia em que você mais gasta.`});
+        out.push({icon:'📅', text:`${dows[idx]} costuma ser o dia em que você mais gasta.`, weight:1});
       }
     }
-    // projeção de meta
+
+    // 6) projeção de meta
     const g = activeGoal();
     const t = computeTotals();
     if(g && t.meta < g.target && state.incomeEntries.length>=3){
@@ -530,11 +580,16 @@
         const faltam = g.target - t.meta;
         const diasRestantes = Math.ceil(faltam/avgPerDay);
         const dt = new Date(); dt.setDate(dt.getDate()+diasRestantes);
-        out.push({icon:'🎯', text:`No ritmo atual, você bate a meta "${g.name}" em cerca de ${diasRestantes} dias (por volta de ${dt.toLocaleDateString('pt-BR')}).`});
+        out.push({icon:'🏁', text:`No ritmo atual, você bate a meta "${g.name}" em cerca de ${diasRestantes} dias (por volta de ${dt.toLocaleDateString('pt-BR')}).`, weight:2});
       }
     }
-    if(out.length===0) out.push({icon:'💬', text:'Registre alguns lançamentos para eu começar a te dar sugestões personalizadas.'});
-    return out;
+
+    if(out.length===0){
+      out.push({icon:'💬', text:'Registre alguns lançamentos para eu começar a te dar sugestões personalizadas.', weight:0});
+    }
+
+    out.sort((a,b)=> (b.weight||0)-(a.weight||0));
+    return out.slice(0,6);
   }
 
   /* ---------------- Render shell ---------------- */
@@ -699,6 +754,16 @@
 
     main.innerHTML = `
       <h1 class="page-title">${greet}</h1>
+
+      <div class="card" style="margin-top:4px;margin-bottom:18px;text-align:center;">
+        <h3>Como estão suas finanças</h3>
+        <svg id="heartIcon" class="heart-pulse" style="animation:${moodCfg.vibrate ? `heartCritical ${moodCfg.duration}s ease-in-out infinite` : `heartBeat ${moodCfg.duration}s ease-in-out infinite`};" width="60" height="54" viewBox="0 0 32 29">
+          <path d="M16 29 C16 29 0 18.5 0 8.8 C0 3 4.4 0 8.6 0 C11.6 0 14.4 1.7 16 4.3 C17.6 1.7 20.4 0 23.4 0 C27.6 0 32 3 32 8.8 C32 18.5 16 29 16 29 Z" fill="${moodCfg.color}"/>
+        </svg>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${moodCfg.color};margin-top:8px;">${moodCfg.label}</div>
+        <div id="heartMsg" class="heart-msg" style="font-weight:700;margin-top:6px;color:var(--ink);min-height:20px;font-size:14px;"></div>
+      </div>
+
       <div class="subtitle">Meta ativa: <b>${g?g.name:'—'}</b> · ${fmt(g?g.target:0)}</div>
 
       <div class="jars">
@@ -723,15 +788,6 @@
           <h3>Média de gasto/dia</h3>
           <div class="money sm">${fmt(media)}</div>
         </div>
-      </div>
-
-      <div class="card" style="margin-top:14px;text-align:center;">
-        <h3>Como estão suas finanças</h3>
-        <svg id="heartIcon" class="heart-pulse" style="animation:${moodCfg.vibrate ? `heartCritical ${moodCfg.duration}s ease-in-out infinite` : `heartBeat ${moodCfg.duration}s ease-in-out infinite`};" width="60" height="54" viewBox="0 0 32 29">
-          <path d="M16 29 C16 29 0 18.5 0 8.8 C0 3 4.4 0 8.6 0 C11.6 0 14.4 1.7 16 4.3 C17.6 1.7 20.4 0 23.4 0 C27.6 0 32 3 32 8.8 C32 18.5 16 29 16 29 Z" fill="${moodCfg.color}"/>
-        </svg>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${moodCfg.color};margin-top:8px;">${moodCfg.label}</div>
-        <div id="heartMsg" class="heart-msg" style="font-weight:700;margin-top:6px;color:var(--ink);min-height:20px;font-size:14px;"></div>
       </div>
 
       <div class="grid cols-2" style="margin-top:14px;">
