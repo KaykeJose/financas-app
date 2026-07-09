@@ -778,13 +778,24 @@
     main.innerHTML = `
       <h1 class="page-title">${greet}</h1>
 
-      <div class="card" style="margin-top:4px;margin-bottom:18px;text-align:center;">
-        <h3>Como estão suas finanças</h3>
-        <svg id="heartIcon" class="heart-pulse" style="animation:${moodCfg.vibrate ? `heartCritical ${moodCfg.duration}s ease-in-out infinite` : `heartBeat ${moodCfg.duration}s ease-in-out infinite`};" width="60" height="54" viewBox="0 0 32 29">
-          <path d="M16 29 C16 29 0 18.5 0 8.8 C0 3 4.4 0 8.6 0 C11.6 0 14.4 1.7 16 4.3 C17.6 1.7 20.4 0 23.4 0 C27.6 0 32 3 32 8.8 C32 18.5 16 29 16 29 Z" fill="${moodCfg.color}"/>
-        </svg>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${moodCfg.color};margin-top:8px;">${moodCfg.label}</div>
-        <div id="heartMsg" class="heart-msg" style="font-weight:700;margin-top:6px;color:var(--ink);min-height:20px;font-size:14px;"></div>
+      <div class="card" style="margin-top:4px;margin-bottom:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-around;flex-wrap:wrap;gap:18px;">
+          <div style="text-align:center;">
+            <h3>Como estão suas finanças</h3>
+            <svg id="heartIcon" class="heart-pulse" style="animation:${moodCfg.vibrate ? `heartCritical ${moodCfg.duration}s ease-in-out infinite` : `heartBeat ${moodCfg.duration}s ease-in-out infinite`};" width="60" height="54" viewBox="0 0 32 29">
+              <path d="M16 29 C16 29 0 18.5 0 8.8 C0 3 4.4 0 8.6 0 C11.6 0 14.4 1.7 16 4.3 C17.6 1.7 20.4 0 23.4 0 C27.6 0 32 3 32 8.8 C32 18.5 16 29 16 29 Z" fill="${moodCfg.color}"/>
+            </svg>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${moodCfg.color};margin-top:8px;">${moodCfg.label}</div>
+            <div id="heartMsg" class="heart-msg" style="font-weight:700;margin-top:6px;color:var(--ink);min-height:20px;font-size:14px;max-width:180px;"></div>
+          </div>
+          <div style="width:1px;align-self:stretch;background:var(--border);"></div>
+          <div style="text-align:center;">
+            <h3>Meta</h3>
+            ${jarSVG(pctGoal, 'var(--primary)')}
+            <div class="jar-value" style="margin-top:6px;">${fmt(t.meta)}</div>
+            <div class="meta">${g?g.name:'—'}</div>
+          </div>
+        </div>
       </div>
 
       <div class="card" style="margin-top:14px;">
@@ -829,16 +840,6 @@
       <div class="grid cols-2" style="margin-top:14px;">
         <div class="card"><h3>Reserva</h3><div class="money sm">${fmt(t.reserva)}</div></div>
         <div class="card"><h3>Total geral</h3><div class="money sm">${fmt(t.total)}</div></div>
-      </div>
-
-      <div class="subtitle" style="margin-top:18px;margin-bottom:8px;">Meta ativa: <b>${g?g.name:'—'}</b> · ${fmt(g?g.target:0)}</div>
-
-      <div class="jars">
-        ${jarSVG(pctGoal, 'var(--primary)')}
-        <div class="jar-wrap-lbl"></div>
-      </div>
-      <div class="jars" style="margin-top:-14px;">
-        <div class="jar-wrap"><div class="jar-label">Meta</div><div class="jar-value">${fmt(t.meta)}</div></div>
       </div>
 
       <div class="card" style="margin-top:18px;">
