@@ -787,9 +787,12 @@
         <div id="heartMsg" class="heart-msg" style="font-weight:700;margin-top:6px;color:var(--ink);min-height:20px;font-size:14px;"></div>
       </div>
 
-      <div class="subtitle">Meta ativa: <b>${g?g.name:'—'}</b> · ${fmt(g?g.target:0)}</div>
+      <div class="card" style="margin-top:14px;">
+        <h3>Sugestões</h3>
+        ${insights.map(i=>`<div class="insight"><span class="dot">${i.icon}</span><span>${i.text}</span></div>`).join('')}
+      </div>
 
-      <div class="card">
+      <div class="card" style="margin-top:14px;">
         <h3>Receita do mês</h3>
         <div class="grid cols-3">
           <div>
@@ -807,15 +810,7 @@
         </div>
       </div>
 
-      <div class="jars" style="margin-top:14px;">
-        ${jarSVG(pctGoal, 'var(--primary)')}
-        <div class="jar-wrap-lbl"></div>
-      </div>
-      <div class="jars" style="margin-top:-14px;">
-        <div class="jar-wrap"><div class="jar-label">Meta</div><div class="jar-value">${fmt(t.meta)}</div></div>
-      </div>
-
-      <div class="grid cols-3" style="margin-top:18px;">
+      <div class="grid cols-3" style="margin-top:14px;">
         <div class="card">
           <h3>Saldo livre</h3>
           <div class="money ${t.livre<0?'neg':'pos'}">${fmt(t.livre)}</div>
@@ -836,6 +831,16 @@
         <div class="card"><h3>Total geral</h3><div class="money sm">${fmt(t.total)}</div></div>
       </div>
 
+      <div class="subtitle" style="margin-top:18px;margin-bottom:8px;">Meta ativa: <b>${g?g.name:'—'}</b> · ${fmt(g?g.target:0)}</div>
+
+      <div class="jars">
+        ${jarSVG(pctGoal, 'var(--primary)')}
+        <div class="jar-wrap-lbl"></div>
+      </div>
+      <div class="jars" style="margin-top:-14px;">
+        <div class="jar-wrap"><div class="jar-label">Meta</div><div class="jar-value">${fmt(t.meta)}</div></div>
+      </div>
+
       <div class="card" style="margin-top:18px;">
         <h3>Este mês · categorias</h3>
         ${state.categories.map(c=>{
@@ -852,11 +857,6 @@
             </div>
           </div>`;
         }).join('')}
-      </div>
-
-      <div class="card" style="margin-top:14px;">
-        <h3>Sugestões</h3>
-        ${insights.map(i=>`<div class="insight"><span class="dot">${i.icon}</span><span>${i.text}</span></div>`).join('')}
       </div>
 
       <div class="card" style="margin-top:14px;">
