@@ -185,6 +185,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script>
 (function(){
 
@@ -330,6 +331,52 @@
   }
   function monthKey(d){ return d.slice(0,7); }
   function activeGoal(){ return state.goals.find(g=>g.id===state.activeGoalId) || state.goals[0]; }
+
+  // Editor de divisão reutilizável (usado ao criar E ao editar uma receita).
+  // Mantém Meta/Emergência editáveis, Livre sempre = Receita - Meta - Emergência,
+  // nunca permite negativos nem soma acima da receita.
+  function makeSplitEditor(prefix, amountInputId, initial){
+    let manualMeta = !!(initial && initial.meta!=null);
+    let manualReserva = !!(initial && initial.reserva!=null);
+    const amountEl = document.getElementById(amountInputId);
+    const metaEl = document.getElementById(prefix+'Meta');
+    const reservaEl = document.getElementById(prefix+'Reserva');
+    const livreEl = document.getElementById(prefix+'LivreDisplay');
+
+    if(initial){
+      if(initial.meta!=null) metaEl.value = Number(initial.meta).toFixed(2);
+      if(initial.reserva!=null) reservaEl.value = Number(initial.reserva).toFixed(2);
+    }
+
+    function getAmount(){ return Math.max(0, Number(amountEl.value)||0); }
+
+    function clampAndRender(){
+      const amount = getAmount();
+      let meta = Math.max(0, Number(metaEl.value)||0);
+      meta = Math.min(meta, amount);
+      let reserva = Math.max(0, Number(reservaEl.value)||0);
+      reserva = Math.min(reserva, Math.max(0, amount - meta));
+      metaEl.value = meta.toFixed(2);
+      reservaEl.value = reserva.toFixed(2);
+      const livre = Math.max(0, amount - meta - reserva);
+      livreEl.textContent = fmt(livre);
+      return { meta, reserva, livre };
+    }
+
+    function applyDefaults(){
+      // 100% manual: não pré-preenche com percentual automático.
+      if(!manualMeta) metaEl.value = '0.00';
+      if(!manualReserva) reservaEl.value = '0.00';
+      clampAndRender();
+    }
+
+    amountEl.addEventListener('input', applyDefaults);
+    metaEl.addEventListener('input', ()=>{ manualMeta = true; clampAndRender(); });
+    reservaEl.addEventListener('input', ()=>{ manualReserva = true; clampAndRender(); });
+    clampAndRender();
+
+    return { getValues: clampAndRender };
+  }
 
   function computeTotals(){
     let meta=0, reserva=0, livreIn=0;
@@ -493,6 +540,7 @@
   /* ---------------- Render shell ---------------- */
   let activeTab = 'painel';
   let heartMsgInterval = null;
+  let editingEntry = null; // {kind:'in'|'out', id}
   const TABS = [
     {id:'painel', label:'Painel', ico:'◆'},
     {id:'lancar', label:'Lançar', ico:'＋'},
@@ -516,7 +564,7 @@
       </nav>
     `;
     document.querySelectorAll('[data-tab]').forEach(b=>{
-      b.addEventListener('click', ()=>{ clearInterval(heartMsgInterval); activeTab = b.dataset.tab; render(); });
+      b.addEventListener('click', ()=>{ clearInterval(heartMsgInterval); editingEntry = null; activeTab = b.dataset.tab; render(); });
     });
     renderTab(document.getElementById('main'));
   }
@@ -556,6 +604,83 @@
   }
 
   /* ---------------- Painel ---------------- */
+  function renderIncomeRow(e){
+    if(editingEntry && editingEntry.kind==='in' && editingEntry.id===e.id){
+      const isMensal = e.source==='mensal';
+      const noteEsc = (e.note||'').replace(/"/g,'&quot;');
+      return `<div class="list-item" style="display:block;padding:14px 0;">
+        <label class="field">Tipo de receita</label>
+        <select id="editTipo">
+          <option value="freela" ${!isMensal?'selected':''}>Diária do Free</option>
+          <option value="mensal" ${isMensal?'selected':''}>Salário Mensal</option>
+        </select>
+        <label class="field">Valor (R$)</label>
+        <input type="number" id="editAmount" step="0.01" value="${e.amount}"/>
+        <div id="editDateFreWrap" style="display:${isMensal?'none':'block'};">
+          <label class="field">Data</label>
+          <input type="date" id="editDateFre" value="${isMensal? todayISO() : e.date}"/>
+        </div>
+        <div id="editDateSalWrap" style="display:${isMensal?'block':'none'};">
+          <label class="field">Mês de referência</label>
+          <input type="month" id="editDateSal" value="${isMensal? e.date.slice(0,7) : todayISO().slice(0,7)}"/>
+        </div>
+        <label class="field">Observação</label>
+        <input type="text" id="editNote" value="${noteEsc}"/>
+        <div class="grid cols-3" style="margin-top:8px;">
+          <div><label class="field">Meta (R$)</label><input type="number" id="editMeta" step="0.01"/></div>
+          <div><label class="field">Emergência (R$)</label><input type="number" id="editReserva" step="0.01"/></div>
+          <div><label class="field">Livre (R$)</label><div class="money sm" id="editLivreDisplay" style="padding:11px 0;">R$ 0,00</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button class="btn" style="flex:1;" id="editSave">Salvar</button>
+          <button class="btn secondary" style="flex:1;" id="editCancel">Cancelar</button>
+          <button class="btn danger" id="editDelete">Excluir</button>
+        </div>
+      </div>`;
+    }
+    const label = e.source==='mensal' ? 'Salário Mensal' : 'Diária do Free';
+    return `<div class="list-item">
+      <div><b>${label}</b><div class="meta">${e.date}${e.note? ' · '+e.note:''}</div></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="money sm pos">+${fmt(e.amount)}</div>
+        <button class="icon-btn" style="color:var(--muted)" data-edit-in="${e.id}" title="Editar">✎</button>
+        <button class="icon-btn" data-del-in="${e.id}" title="Excluir">✕</button>
+      </div>
+    </div>`;
+  }
+
+  function renderExpenseRow(e){
+    if(editingEntry && editingEntry.kind==='out' && editingEntry.id===e.id){
+      const noteEsc = (e.note||'').replace(/"/g,'&quot;');
+      return `<div class="list-item" style="display:block;padding:14px 0;">
+        <label class="field">Categoria</label>
+        <select id="editExpCategory">
+          ${state.categories.map(c=>`<option value="${c.id}" ${c.id===e.category?'selected':''}>${c.name}</option>`).join('')}
+        </select>
+        <label class="field">Valor (R$)</label>
+        <input type="number" id="editExpAmount" step="0.01" value="${e.amount}"/>
+        <label class="field">Nota</label>
+        <input type="text" id="editExpNote" value="${noteEsc}"/>
+        <label class="field">Data</label>
+        <input type="date" id="editExpDate" value="${e.date}"/>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button class="btn" style="flex:1;" id="editExpSave">Salvar</button>
+          <button class="btn secondary" style="flex:1;" id="editExpCancel">Cancelar</button>
+          <button class="btn danger" id="editExpDelete">Excluir</button>
+        </div>
+      </div>`;
+    }
+    const cat = state.categories.find(c=>c.id===e.category);
+    return `<div class="list-item">
+      <div><b>${cat?cat.name:'Gasto'}</b><div class="meta">${e.date}${e.note? ' · '+e.note:''}</div></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="money sm neg">-${fmt(e.amount)}</div>
+        <button class="icon-btn" style="color:var(--muted)" data-edit-out="${e.id}" title="Editar">✎</button>
+        <button class="icon-btn" data-del-out="${e.id}" title="Excluir">✕</button>
+      </div>
+    </div>`;
+  }
+
   function renderPainel(main){
     const t = computeTotals();
     const g = activeGoal();
@@ -640,14 +765,7 @@
       <div class="card" style="margin-top:14px;">
         <h3>Lançamentos recentes</h3>
         ${recentes.length===0? '<div class="empty">Nenhum lançamento ainda.</div>' :
-          recentes.map(e=>{
-            if(e.kind==='in'){
-              const label = e.source==='mensal' ? 'Salário Mensal' : 'Diária do Free';
-              return `<div class="list-item"><div><b>${label}</b><div class="meta">${e.date}${e.note? ' · '+e.note:''}</div></div><div class="money sm pos">+${fmt(e.amount)}</div></div>`;
-            }
-            const cat = state.categories.find(c=>c.id===e.category);
-            return `<div class="list-item"><div><b>${cat?cat.name:'Gasto'}</b><div class="meta">${e.date}${e.note? ' · '+e.note:''}</div></div><div class="money sm neg">-${fmt(e.amount)}</div></div>`;
-          }).join('')
+          recentes.map(e=> e.kind==='in' ? renderIncomeRow(e) : renderExpenseRow(e)).join('')
         }
       </div>
     `;
@@ -670,6 +788,101 @@
 
     if(moodCfg.vibrate && navigator.vibrate){
       try{ navigator.vibrate([80,40,80]); }catch(e){}
+    }
+
+    // --- Edição/exclusão de receitas ---
+    main.querySelectorAll('[data-edit-in]').forEach(btn=>btn.addEventListener('click', ()=>{
+      editingEntry = {kind:'in', id:btn.dataset.editIn};
+      renderPainel(main);
+    }));
+    main.querySelectorAll('[data-del-in]').forEach(btn=>btn.addEventListener('click', ()=>{
+      if(!confirm('Excluir esta receita?')) return;
+      state.incomeEntries = state.incomeEntries.filter(x=>x.id!==btn.dataset.delIn);
+      scheduleSave();
+      showToast('Receita excluída.');
+      renderPainel(main);
+    }));
+    if(editingEntry && editingEntry.kind==='in'){
+      const e = state.incomeEntries.find(x=>x.id===editingEntry.id);
+      if(e){
+        const editSplit = makeSplitEditor('edit', 'editAmount', {meta:e.split.meta, reserva:e.split.reserva});
+        document.getElementById('editTipo').addEventListener('change', (ev)=>{
+          const isMensal = ev.target.value==='mensal';
+          document.getElementById('editDateFreWrap').style.display = isMensal?'none':'block';
+          document.getElementById('editDateSalWrap').style.display = isMensal?'block':'none';
+        });
+        document.getElementById('editSave').addEventListener('click', ()=>{
+          const tipo = document.getElementById('editTipo').value;
+          const amount = Number(document.getElementById('editAmount').value);
+          if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
+          const note = document.getElementById('editNote').value.trim();
+          const split = editSplit.getValues();
+          let date;
+          if(tipo==='mensal'){
+            const mv = document.getElementById('editDateSal').value;
+            if(!mv){ showToast('Informe o mês de referência.'); return; }
+            date = mv+'-01';
+          } else {
+            date = document.getElementById('editDateFre').value;
+            if(!date){ showToast('Informe a data.'); return; }
+          }
+          e.amount = amount; e.date = date; e.note = note; e.source = tipo; e.split = split;
+          scheduleSave();
+          editingEntry = null;
+          showToast('Receita atualizada.');
+          renderPainel(main);
+        });
+        document.getElementById('editCancel').addEventListener('click', ()=>{ editingEntry = null; renderPainel(main); });
+        document.getElementById('editDelete').addEventListener('click', ()=>{
+          if(!confirm('Excluir esta receita?')) return;
+          state.incomeEntries = state.incomeEntries.filter(x=>x.id!==e.id);
+          scheduleSave();
+          editingEntry = null;
+          showToast('Receita excluída.');
+          renderPainel(main);
+        });
+      }
+    }
+
+    // --- Edição/exclusão de gastos ---
+    main.querySelectorAll('[data-edit-out]').forEach(btn=>btn.addEventListener('click', ()=>{
+      editingEntry = {kind:'out', id:btn.dataset.editOut};
+      renderPainel(main);
+    }));
+    main.querySelectorAll('[data-del-out]').forEach(btn=>btn.addEventListener('click', ()=>{
+      if(!confirm('Excluir este gasto?')) return;
+      state.expenseEntries = state.expenseEntries.filter(x=>x.id!==btn.dataset.delOut);
+      scheduleSave();
+      showToast('Gasto excluído.');
+      renderPainel(main);
+    }));
+    if(editingEntry && editingEntry.kind==='out'){
+      const e = state.expenseEntries.find(x=>x.id===editingEntry.id);
+      if(e){
+        document.getElementById('editExpSave').addEventListener('click', ()=>{
+          const amount = Number(document.getElementById('editExpAmount').value);
+          if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
+          const date = document.getElementById('editExpDate').value;
+          if(!date){ showToast('Informe a data.'); return; }
+          e.amount = amount;
+          e.category = document.getElementById('editExpCategory').value;
+          e.note = document.getElementById('editExpNote').value.trim();
+          e.date = date;
+          scheduleSave();
+          editingEntry = null;
+          showToast('Gasto atualizado.');
+          renderPainel(main);
+        });
+        document.getElementById('editExpCancel').addEventListener('click', ()=>{ editingEntry = null; renderPainel(main); });
+        document.getElementById('editExpDelete').addEventListener('click', ()=>{
+          if(!confirm('Excluir este gasto?')) return;
+          state.expenseEntries = state.expenseEntries.filter(x=>x.id!==e.id);
+          scheduleSave();
+          editingEntry = null;
+          showToast('Gasto excluído.');
+          renderPainel(main);
+        });
+      }
     }
   }
 
@@ -865,45 +1078,7 @@
       </div>
     `;
 
-    // Editor de divisão reutilizável: mantém Meta/Emergência editáveis, Livre sempre = Receita - Meta - Emergência,
-    // nunca permite negativos nem soma acima da receita.
-    function makeSplitEditor(prefix, amountInputId){
-      let manualMeta = false, manualReserva = false;
-      const amountEl = document.getElementById(amountInputId);
-      const metaEl = document.getElementById(prefix+'Meta');
-      const reservaEl = document.getElementById(prefix+'Reserva');
-      const livreEl = document.getElementById(prefix+'LivreDisplay');
-
-      function getAmount(){ return Math.max(0, Number(amountEl.value)||0); }
-
-      function clampAndRender(){
-        const amount = getAmount();
-        let meta = Math.max(0, Number(metaEl.value)||0);
-        meta = Math.min(meta, amount);
-        let reserva = Math.max(0, Number(reservaEl.value)||0);
-        reserva = Math.min(reserva, Math.max(0, amount - meta));
-        metaEl.value = meta.toFixed(2);
-        reservaEl.value = reserva.toFixed(2);
-        const livre = Math.max(0, amount - meta - reserva);
-        livreEl.textContent = fmt(livre);
-        return { meta, reserva, livre };
-      }
-
-      function applyDefaults(){
-        // 100% manual: não pré-preenche mais com percentual automático.
-        if(!manualMeta) metaEl.value = '0.00';
-        if(!manualReserva) reservaEl.value = '0.00';
-        clampAndRender();
-      }
-
-      amountEl.addEventListener('input', applyDefaults);
-      metaEl.addEventListener('input', ()=>{ manualMeta = true; clampAndRender(); });
-      reservaEl.addEventListener('input', ()=>{ manualReserva = true; clampAndRender(); });
-      applyDefaults();
-
-      return { getValues: clampAndRender };
-    }
-
+    // Editor de divisão reutilizável já está definido globalmente (função makeSplitEditor).
     const freeSplit = makeSplitEditor('fre', 'freAmount');
     const salSplit = makeSplitEditor('sal', 'salAmount');
 
@@ -1126,15 +1301,16 @@
 
       <div class="card" style="margin-top:14px;">
         <h3>Categorias e tetos</h3>
-        <table class="cfg" id="catTable">
-          <tr><th>Categoria</th><th>Teto mensal (0 = sem teto)</th><th></th></tr>
+        <div class="hint" style="margin-bottom:10px;">Segure o ⠿ e arraste pra reordenar.</div>
+        <div id="catList">
           ${state.categories.map(c=>`
-            <tr data-id="${c.id}">
-              <td><input type="text" class="c-name" value="${c.name}"/></td>
-              <td><input type="number" class="c-cap" value="${c.cap}"/></td>
-              <td><button class="icon-btn c-del">✕</button></td>
-            </tr>`).join('')}
-        </table>
+            <div class="cat-row" data-id="${c.id}" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+              <span class="drag-handle" style="cursor:grab;color:var(--muted);font-size:18px;line-height:1;touch-action:none;">⠿</span>
+              <input type="text" class="c-name" value="${c.name}" style="flex:2;"/>
+              <input type="number" class="c-cap" value="${c.cap}" style="flex:1;"/>
+              <button class="icon-btn c-del" title="Excluir">✕</button>
+            </div>`).join('')}
+        </div>
         <button class="btn secondary small add-row" id="addCat">+ Nova categoria</button>
         <button class="btn small add-row" id="saveCats" style="margin-left:8px;">Salvar categorias</button>
       </div>
@@ -1189,18 +1365,32 @@
       scheduleSave(); renderConfig(main);
     });
     main.querySelectorAll('.c-del').forEach(btn=>btn.addEventListener('click', ev=>{
-      const id = ev.target.closest('tr').dataset.id;
+      const id = ev.target.closest('.cat-row').dataset.id;
       state.categories = state.categories.filter(c=>c.id!==id);
       scheduleSave(); renderConfig(main);
     }));
     document.getElementById('saveCats').addEventListener('click', ()=>{
-      main.querySelectorAll('#catTable tr[data-id]').forEach(tr=>{
-        const c = state.categories.find(x=>x.id===tr.dataset.id);
-        c.name = tr.querySelector('.c-name').value;
-        c.cap = Number(tr.querySelector('.c-cap').value)||0;
+      main.querySelectorAll('#catList .cat-row').forEach(row=>{
+        const c = state.categories.find(x=>x.id===row.dataset.id);
+        if(!c) return;
+        c.name = row.querySelector('.c-name').value;
+        c.cap = Number(row.querySelector('.c-cap').value)||0;
       });
       scheduleSave(); showToast('Categorias salvas.');
     });
+
+    if(window.Sortable){
+      Sortable.create(document.getElementById('catList'), {
+        handle: '.drag-handle',
+        animation: 150,
+        onEnd: function(){
+          const ids = Array.from(document.querySelectorAll('#catList .cat-row')).map(r=>r.dataset.id);
+          state.categories = ids.map(id => state.categories.find(c=>c.id===id)).filter(Boolean);
+          scheduleSave();
+          showToast('Ordem salva.');
+        }
+      });
+    }
 
     document.getElementById('btnLogout').addEventListener('click', doLogout);
 
