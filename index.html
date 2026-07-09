@@ -1125,39 +1125,40 @@
       <div class="subtitle">Registre uma receita ou um gasto.</div>
 
       <div class="card">
-        <h3>Diária do Free</h3>
-        <div class="hint" style="margin-bottom:10px;">Valores recebidos em trabalhos freelancer.</div>
+        <h3>Receita</h3>
         <label class="field">Valor recebido (R$)</label>
-        <input type="number" id="freAmount" step="0.01" placeholder="0,00" />
-        <label class="field">Data</label>
-        <input type="date" id="freDate" value="${todayISO()}" />
-        <label class="field">Observação (opcional)</label>
-        <input type="text" id="freNote" placeholder="ex: edição de vídeo pro cliente X" />
-        <div class="hint" style="margin-top:14px;">Informe manualmente quanto vai pra Meta e quanto pra Emergência — o Livre calcula sozinho.</div>
-        <div class="grid cols-3" style="margin-top:8px;">
-          <div><label class="field">Meta (R$)</label><input type="number" id="freMeta" step="0.01" value="0"/></div>
-          <div><label class="field">Emergência (R$)</label><input type="number" id="freReserva" step="0.01" value="0"/></div>
-          <div><label class="field">Livre (R$)</label><div class="money sm" id="freLivreDisplay" style="padding:11px 0;">R$ 0,00</div></div>
-        </div>
-        <button class="btn block" style="margin-top:16px;" id="btnSaveFree">+ Registrar diária</button>
-      </div>
+        <input type="number" id="recAmount" step="0.01" placeholder="0,00" />
 
-      <div class="card" style="margin-top:16px;">
-        <h3>Salário Mensal</h3>
-        <div class="hint" style="margin-bottom:10px;">Renda fixa mensal (CLT, contrato, etc.).</div>
-        <label class="field">Valor do salário (R$)</label>
-        <input type="number" id="salAmount" step="0.01" placeholder="0,00" />
-        <label class="field">Mês de referência</label>
-        <input type="month" id="salMonth" value="${todayISO().slice(0,7)}" />
+        <label class="field">Tipo</label>
+        <div style="display:flex;gap:20px;margin-top:2px;">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:14px;cursor:pointer;">
+            <input type="radio" name="recTipo" id="recTipoSalario" value="mensal"/> Salário
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:14px;cursor:pointer;">
+            <input type="radio" name="recTipo" id="recTipoFreela" value="freela" checked/> Freelancer
+          </label>
+        </div>
+
+        <div id="recDateFreWrap">
+          <label class="field">Data</label>
+          <input type="date" id="recDateFre" value="${todayISO()}" />
+        </div>
+        <div id="recDateSalWrap" style="display:none;">
+          <label class="field">Mês de referência</label>
+          <input type="month" id="recDateSal" value="${todayISO().slice(0,7)}" />
+        </div>
+
         <label class="field">Observação (opcional)</label>
-        <input type="text" id="salNote" placeholder="ex: salário empresa Y" />
+        <input type="text" id="recNote" placeholder="ex: cliente X, empresa Y..." />
+
         <div class="hint" style="margin-top:14px;">Informe manualmente quanto vai pra Meta e quanto pra Emergência — o Livre calcula sozinho.</div>
         <div class="grid cols-3" style="margin-top:8px;">
-          <div><label class="field">Meta (R$)</label><input type="number" id="salMeta" step="0.01" value="0"/></div>
-          <div><label class="field">Emergência (R$)</label><input type="number" id="salReserva" step="0.01" value="0"/></div>
-          <div><label class="field">Livre (R$)</label><div class="money sm" id="salLivreDisplay" style="padding:11px 0;">R$ 0,00</div></div>
+          <div><label class="field">Meta (R$)</label><input type="number" id="recMeta" step="0.01" value="0"/></div>
+          <div><label class="field">Emergência (R$)</label><input type="number" id="recReserva" step="0.01" value="0"/></div>
+          <div><label class="field">Livre (R$)</label><div class="money sm" id="recLivreDisplay" style="padding:11px 0;">R$ 0,00</div></div>
         </div>
-        <button class="btn block" style="margin-top:16px;" id="btnSaveSalario">+ Registrar salário</button>
+
+        <button class="btn block" style="margin-top:16px;" id="btnSaveReceita">Salvar Receita</button>
       </div>
 
       <div class="card" style="margin-top:16px;">
@@ -1177,37 +1178,36 @@
     `;
 
     // Editor de divisão reutilizável já está definido globalmente (função makeSplitEditor).
-    const freeSplit = makeSplitEditor('fre', 'freAmount');
-    const salSplit = makeSplitEditor('sal', 'salAmount');
+    const recSplit = makeSplitEditor('rec', 'recAmount');
 
-    document.getElementById('btnSaveFree').addEventListener('click', ()=>{
-      const amount = Number(document.getElementById('freAmount').value);
-      const date = document.getElementById('freDate').value;
-      const note = document.getElementById('freNote').value.trim();
+    function toggleRecTipo(){
+      const isMensal = document.getElementById('recTipoSalario').checked;
+      document.getElementById('recDateFreWrap').style.display = isMensal?'none':'block';
+      document.getElementById('recDateSalWrap').style.display = isMensal?'block':'none';
+    }
+    document.getElementById('recTipoSalario').addEventListener('change', toggleRecTipo);
+    document.getElementById('recTipoFreela').addEventListener('change', toggleRecTipo);
+
+    document.getElementById('btnSaveReceita').addEventListener('click', ()=>{
+      const amount = Number(document.getElementById('recAmount').value);
       if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
-      if(!date){ showToast('Informe a data.'); return; }
-      const split = freeSplit.getValues();
+      const isMensal = document.getElementById('recTipoSalario').checked;
+      const note = document.getElementById('recNote').value.trim();
+      const split = recSplit.getValues();
+      let date;
+      if(isMensal){
+        const mv = document.getElementById('recDateSal').value;
+        if(!mv){ showToast('Informe o mês de referência.'); return; }
+        date = mv+'-01';
+      } else {
+        date = document.getElementById('recDateFre').value;
+        if(!date){ showToast('Informe a data.'); return; }
+      }
       state.incomeEntries.push({
-        id: uid(), amount, date, note, source: 'freela', split
+        id: uid(), amount, date, note, source: isMensal?'mensal':'freela', split
       });
       scheduleSave();
-      showToast('Diária registrada.');
-      activeTab='lancar';
-      render();
-    });
-
-    document.getElementById('btnSaveSalario').addEventListener('click', ()=>{
-      const amount = Number(document.getElementById('salAmount').value);
-      const monthVal = document.getElementById('salMonth').value;
-      const note = document.getElementById('salNote').value.trim();
-      if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
-      if(!monthVal){ showToast('Informe o mês de referência.'); return; }
-      const split = salSplit.getValues();
-      state.incomeEntries.push({
-        id: uid(), amount, date: monthVal+'-01', note, source: 'mensal', split
-      });
-      scheduleSave();
-      showToast('Salário mensal registrado.');
+      showToast('Receita registrada.');
       activeTab='lancar';
       render();
     });
