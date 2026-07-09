@@ -50,12 +50,14 @@
   nav.rail button{
     display:flex;align-items:center;gap:10px;background:transparent;border:none;border-radius:10px;
     padding:10px 12px;font-size:14px;color:var(--muted);text-align:left;font-weight:600;
+    transition:background-color .18s ease, color .18s ease, box-shadow .18s ease;
   }
   nav.rail button:hover{background:var(--surface-2);color:var(--ink);}
-  nav.rail button.active{background:var(--primary);color:#fff;}
+  nav.rail button.active{background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(27,122,67,0.3);}
   nav.rail .ico{width:18px;text-align:center;font-size:15px;}
 
-  main{flex:1;min-width:0;padding:28px 34px 100px;max-width:900px;}
+  @keyframes fadeSlideIn{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+  main{flex:1;min-width:0;padding:28px 34px 100px;max-width:900px;animation:fadeSlideIn .3s ease;}
   @media (max-width:820px){
     main{padding:18px 16px 90px;max-width:100%;}
     nav.rail{display:none;}
@@ -69,20 +71,27 @@
       justify-content:space-around;padding:6px 2px;z-index:20;
     }
     nav.tabbar button{background:none;border:none;font-size:10px;color:var(--muted);font-weight:600;
-      display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;flex:1;}
-    nav.tabbar button .ico{font-size:16px;}
+      display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;flex:1;
+      transition:color .18s ease, transform .18s ease;}
+    nav.tabbar button .ico{font-size:16px;transition:transform .18s ease;}
     nav.tabbar button.active{color:var(--primary);}
+    nav.tabbar button.active .ico{transform:scale(1.15);}
   }
 
-  h1.page-title{font-family:var(--font-display);font-size:26px;margin:0 0 4px;color:var(--ink);}
+  h1.page-title{font-family:var(--font-display);font-size:27px;margin:0 0 4px;color:var(--ink);letter-spacing:-0.2px;}
   .subtitle{color:var(--muted);font-size:13px;margin-bottom:22px;}
 
-  .grid{display:grid;gap:14px;}
+  .grid{display:grid;gap:16px;}
   .grid.cols-2{grid-template-columns:1fr 1fr;}
   .grid.cols-3{grid-template-columns:repeat(3,1fr);}
   @media (max-width:640px){ .grid.cols-2, .grid.cols-3{grid-template-columns:1fr 1fr;} }
 
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 20px;
+    box-shadow:0 1px 2px rgba(21,39,28,0.05), 0 1px 1px rgba(21,39,28,0.03);
+    transition:box-shadow .22s ease, transform .22s ease, border-color .22s ease;}
+  @media (hover:hover){
+    .card:hover{box-shadow:0 6px 20px rgba(21,39,28,0.08); transform:translateY(-1px); border-color:var(--accent);}
+  }
   .card.tight{padding:12px 14px;}
   .card h3{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);font-weight:700;}
   .money{font-family:var(--font-mono);font-weight:600;font-size:22px;color:var(--ink);}
@@ -100,7 +109,7 @@
   .jar-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;width:96px;}
   .jar-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
   .jar-value{font-family:var(--font-mono);font-size:13px;color:var(--ink);font-weight:600;}
-  svg.jar{overflow:visible;}
+  svg.jar{overflow:visible;filter:drop-shadow(0 3px 6px rgba(21,39,28,0.1));}
   .wave{animation:waveMove 6s linear infinite;}
   @keyframes waveMove{ from{transform:translateX(0);} to{transform:translateX(-60px);} }
 
@@ -114,27 +123,35 @@
     45%{transform:scale(1) translateX(0);}
     100%{transform:scale(1) translateX(0);}
   }
-  .heart-pulse{ display:inline-block; }
+  .heart-pulse{ display:inline-block; filter:drop-shadow(0 4px 10px rgba(21,39,28,0.15)); }
   .heart-msg{ transition:opacity .3s ease; }
 
-  .btn{background:var(--primary);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-weight:700;font-size:14px;}
+  .btn{background:var(--primary);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-weight:700;font-size:14px;
+    box-shadow:0 2px 6px rgba(27,122,67,0.28);
+    transition:background-color .18s ease, transform .12s ease, box-shadow .18s ease;}
+  .btn:active{transform:scale(0.97);}
+  @media (hover:hover){
+    .btn:hover{transform:translateY(-1px); box-shadow:0 5px 14px rgba(27,122,67,0.32);}
+  }
   .btn:hover{background:var(--primary-dark);}
-  .btn.secondary{background:#fff;color:var(--primary-dark);border:1px solid var(--primary);}
-  .btn.danger{background:var(--danger);}
+  .btn.secondary{background:#fff;color:var(--primary-dark);border:1px solid var(--primary);box-shadow:none;}
+  .btn.danger{background:var(--danger);box-shadow:0 2px 6px rgba(193,67,43,0.28);}
   .btn.block{width:100%;}
   .btn.small{padding:7px 12px;font-size:12px;border-radius:8px;}
 
   label.field{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:14px 0 6px;}
   label.field:first-child{margin-top:0;}
-  input[type=text],input[type=number],input[type=date],select,textarea{
+  input[type=text],input[type=number],input[type=date],input[type=month],input[type=password],select,textarea{
     width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;
-    font-size:14px;color:var(--ink);
+    font-size:14px;color:var(--ink);transition:border-color .16s ease, box-shadow .16s ease;
   }
-  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(52,166,95,0.16);}
   .hint{font-size:11.5px;color:var(--muted);margin-top:6px;}
 
   .row-between{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-  .list-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);}
+  .list-item{display:flex;align-items:center;justify-content:space-between;padding:10px 6px;margin:0 -6px;
+    border-bottom:1px solid var(--border);border-radius:8px;transition:background-color .15s ease;}
+  @media (hover:hover){ .list-item:hover{background:var(--surface-2);} }
   .list-item:last-child{border-bottom:none;}
   .list-item .meta{font-size:12px;color:var(--muted);}
   .empty{color:var(--muted);font-size:13px;padding:6px 0;}
@@ -151,7 +168,8 @@
   table.cfg th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;padding:0 8px 8px 0;}
   table.cfg td{padding:6px 8px 6px 0;vertical-align:middle;}
   table.cfg input{padding:8px;}
-  .icon-btn{background:none;border:none;color:var(--danger);font-size:16px;padding:4px 8px;}
+  .icon-btn{background:none;border:none;color:var(--danger);font-size:16px;padding:4px 8px;border-radius:8px;transition:background-color .15s ease;}
+  @media (hover:hover){ .icon-btn:hover{background:rgba(193,67,43,0.1);} }
   .add-row{margin-top:10px;}
 
   .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center;}
@@ -174,9 +192,10 @@
   .bar .fill.neg{background:var(--danger);}
   .bar .lbl{font-size:9px;color:var(--muted);margin-top:4px;}
 
-  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
-    padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:50;}
-  .toast.show{opacity:1;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,10px);background:var(--ink);color:#fff;
+    padding:11px 20px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;
+    box-shadow:0 10px 30px rgba(0,0,0,0.28);transition:opacity .25s ease, transform .25s ease;z-index:50;}
+  .toast.show{opacity:1;transform:translate(-50%,0);}
   @media (max-width:820px){ .toast{bottom:78px;} }
 </style>
 </head>
@@ -745,6 +764,10 @@
     const greet = hour<12?'Bom dia':(hour<18?'Boa tarde':'Boa noite');
     const gastoMes = monthExpenses(ym).reduce((s,e)=>s+Number(e.amount||0),0);
     const media = avgSpendPerDay(ym);
+    const rendaMesEntries = monthIncome(ym);
+    const salarioMes = rendaMesEntries.filter(e=>e.source==='mensal').reduce((s,e)=>s+Number(e.amount||0),0);
+    const freelaMes = rendaMesEntries.filter(e=>e.source!=='mensal').reduce((s,e)=>s+Number(e.amount||0),0);
+    const receitaTotalMes = salarioMes + freelaMes;
     const mood = computeMood();
     const moodCfg = HEART_MOODS[mood];
     const insights = buildInsights();
@@ -772,6 +795,24 @@
       </div>
       <div class="jars" style="margin-top:-14px;">
         <div class="jar-wrap"><div class="jar-label">Meta</div><div class="jar-value">${fmt(t.meta)}</div></div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Receita do mês</h3>
+        <div class="grid cols-3">
+          <div>
+            <div class="meta">Salário</div>
+            <div class="money sm">${fmt(salarioMes)}</div>
+          </div>
+          <div>
+            <div class="meta">Freelas</div>
+            <div class="money sm">${fmt(freelaMes)}</div>
+          </div>
+          <div>
+            <div class="meta">Total</div>
+            <div class="money sm pos">${fmt(receitaTotalMes)}</div>
+          </div>
+        </div>
       </div>
 
       <div class="grid cols-3" style="margin-top:18px;">
