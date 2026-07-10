@@ -660,6 +660,35 @@
   let activeTab = 'painel';
   let heartMsgInterval = null;
   let editingEntry = null; // {kind:'in'|'out', id}
+  let filterPeriodo = 'recentes'; // recentes | mes_atual | mes_passado | todos
+  let filterTipo = 'todos'; // todos | receitas | gastos
+  let filterCategoria = 'todas'; // 'todas' ou id de categoria
+
+  function getFilteredEntries(){
+    let list = [...state.incomeEntries.map(e=>({...e,kind:'in'})), ...state.expenseEntries.map(e=>({...e,kind:'out'}))];
+
+    if(filterTipo==='receitas') list = list.filter(e=>e.kind==='in');
+    if(filterTipo==='gastos') list = list.filter(e=>e.kind==='out');
+
+    if(filterCategoria!=='todas'){
+      list = list.filter(e=> e.kind==='out' && e.category===filterCategoria);
+    }
+
+    if(filterPeriodo==='mes_atual'){
+      const ym = todayISO().slice(0,7);
+      list = list.filter(e=>monthKey(e.date)===ym);
+    } else if(filterPeriodo==='mes_passado'){
+      const ym = prevMonthKey(todayISO().slice(0,7));
+      list = list.filter(e=>monthKey(e.date)===ym);
+    }
+
+    list.sort((a,b)=> (a.date+a.id) < (b.date+b.id) ? 1 : -1);
+
+    if(filterPeriodo==='recentes') list = list.slice(0,6);
+
+    return list;
+  }
+
   const TABS = [
     {id:'painel', label:'Painel', ico:'◆'},
     {id:'lancar', label:'Lançar', ico:'＋'},
@@ -818,8 +847,7 @@
     const moodCfg = HEART_MOODS[mood];
     const insights = buildInsights();
 
-    const recentes = [...state.incomeEntries.map(e=>({...e,kind:'in'})), ...state.expenseEntries.map(e=>({...e,kind:'out'}))]
-      .sort((a,b)=> (a.date+a.id) < (b.date+b.id) ? 1 : -1).slice(0,6);
+    const recentes = getFilteredEntries();
 
     main.innerHTML = `
       <h1 class="page-title">${greet}</h1>
@@ -934,8 +962,34 @@
       </div>
 
       <div class="card" style="margin-top:14px;">
-        <h3>Lançamentos recentes</h3>
-        ${recentes.length===0? '<div class="empty">Nenhum lançamento ainda.</div>' :
+        <h3>Lançamentos ${filterPeriodo==='recentes'?'recentes':''}</h3>
+        <div class="grid cols-3" style="margin-bottom:12px;">
+          <div>
+            <label class="field" style="margin:0 0 4px;">Período</label>
+            <select id="filtroPeriodo">
+              <option value="recentes" ${filterPeriodo==='recentes'?'selected':''}>Últimos 6</option>
+              <option value="mes_atual" ${filterPeriodo==='mes_atual'?'selected':''}>Este mês</option>
+              <option value="mes_passado" ${filterPeriodo==='mes_passado'?'selected':''}>Mês passado</option>
+              <option value="todos" ${filterPeriodo==='todos'?'selected':''}>Todos</option>
+            </select>
+          </div>
+          <div>
+            <label class="field" style="margin:0 0 4px;">Tipo</label>
+            <select id="filtroTipo">
+              <option value="todos" ${filterTipo==='todos'?'selected':''}>Todos</option>
+              <option value="receitas" ${filterTipo==='receitas'?'selected':''}>Receitas</option>
+              <option value="gastos" ${filterTipo==='gastos'?'selected':''}>Gastos</option>
+            </select>
+          </div>
+          <div>
+            <label class="field" style="margin:0 0 4px;">Categoria</label>
+            <select id="filtroCategoria">
+              <option value="todas" ${filterCategoria==='todas'?'selected':''}>Todas</option>
+              ${state.categories.map(c=>`<option value="${c.id}" ${filterCategoria===c.id?'selected':''}>${c.name}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        ${recentes.length===0? '<div class="empty">Nenhum lançamento encontrado com esse filtro.</div>' :
           recentes.map(e=> e.kind==='in' ? renderIncomeRow(e) : renderExpenseRow(e)).join('')
         }
       </div>
@@ -993,6 +1047,17 @@
         livreDisplayVal.style.display = 'block';
       });
     }
+
+    // --- Filtro de lançamentos ---
+    document.getElementById('filtroPeriodo').addEventListener('change', (e)=>{
+      filterPeriodo = e.target.value; renderPainel(main);
+    });
+    document.getElementById('filtroTipo').addEventListener('change', (e)=>{
+      filterTipo = e.target.value; renderPainel(main);
+    });
+    document.getElementById('filtroCategoria').addEventListener('change', (e)=>{
+      filterCategoria = e.target.value; renderPainel(main);
+    });
 
     // --- Edição/exclusão de receitas ---
     main.querySelectorAll('[data-edit-in]').forEach(btn=>btn.addEventListener('click', ()=>{
