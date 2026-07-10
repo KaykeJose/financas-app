@@ -233,6 +233,7 @@
         {id:'c7', name:'Outros', cap:0}
       ],
       paymentMethods: ['Dinheiro livre','Cartão de crédito','Pix','Dinheiro físico'],
+      livreManual: null,
       incomeEntries: [],
       expenseEntries: [],
       recurringBills: [],
@@ -416,8 +417,9 @@
       livreIn += e.split.livre||0;
     });
     const gastoTotal = state.expenseEntries.reduce((s,e)=>s+Number(e.amount||0),0);
-    const livre = livreIn - gastoTotal;
-    return {meta, reserva, livre, total: meta+reserva+livre};
+    const livreAuto = livreIn - gastoTotal;
+    const livre = (state.livreManual!=null) ? state.livreManual : livreAuto;
+    return {meta, reserva, livre, livreAuto, isManualLivre: state.livreManual!=null, total: meta+reserva+livre};
   }
 
   function monthExpenses(ym){
@@ -834,8 +836,16 @@
 
       <div class="grid cols-2" style="margin-top:14px;">
         <div class="card">
-          <h3>Saldo livre</h3>
-          <div class="money ${t.livre<0?'neg':'pos'}">${fmt(t.livre)}</div>
+          <h3>Saldo livre ${t.isManualLivre?'<span class="meta" style="font-weight:400;">(manual)</span>':''}</h3>
+          <div class="money ${t.livre<0?'neg':'pos'}" id="livreDisplayVal" style="cursor:pointer;" title="Clique para ajustar manualmente">${fmt(t.livre)}</div>
+          <div id="livreEditWrap" style="display:none;margin-top:8px;">
+            <input type="number" id="livreManualInput" step="0.01" value="${t.livre.toFixed(2)}"/>
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+              <button class="btn" id="livreManualSave" style="flex:1;">Salvar</button>
+              ${t.isManualLivre?'<button class="btn secondary" id="livreManualAuto">Voltar ao automático</button>':''}
+              <button class="btn secondary" id="livreManualCancel">Cancelar</button>
+            </div>
+          </div>
         </div>
         <div class="card">
           <h3>Média de gasto/dia</h3>
@@ -898,6 +908,39 @@
 
     if(moodCfg.vibrate && navigator.vibrate){
       try{ navigator.vibrate([80,40,80]); }catch(e){}
+    }
+
+    // --- Saldo livre manual ---
+    const livreDisplayVal = document.getElementById('livreDisplayVal');
+    const livreEditWrap = document.getElementById('livreEditWrap');
+    if(livreDisplayVal && livreEditWrap){
+      livreDisplayVal.addEventListener('click', ()=>{
+        livreDisplayVal.style.display = 'none';
+        livreEditWrap.style.display = 'block';
+        const inp = document.getElementById('livreManualInput');
+        inp.focus(); inp.select();
+      });
+      const saveBtn = document.getElementById('livreManualSave');
+      if(saveBtn) saveBtn.addEventListener('click', ()=>{
+        const val = Number(document.getElementById('livreManualInput').value);
+        if(isNaN(val)){ showToast('Informe um valor válido.'); return; }
+        state.livreManual = val;
+        scheduleSave();
+        showToast('Saldo livre ajustado manualmente.');
+        renderPainel(main);
+      });
+      const autoBtn = document.getElementById('livreManualAuto');
+      if(autoBtn) autoBtn.addEventListener('click', ()=>{
+        state.livreManual = null;
+        scheduleSave();
+        showToast('Saldo livre voltou ao automático.');
+        renderPainel(main);
+      });
+      const cancelBtn = document.getElementById('livreManualCancel');
+      if(cancelBtn) cancelBtn.addEventListener('click', ()=>{
+        livreEditWrap.style.display = 'none';
+        livreDisplayVal.style.display = 'block';
+      });
     }
 
     // --- Edição/exclusão de receitas ---
