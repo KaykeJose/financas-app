@@ -221,7 +221,6 @@
   function defaultState(){
     return {
       goals: [{id:'g1', name:'Minha Meta', target:20000, saved_manual_offset:0}],
-      activeGoalId: 'g1',
       potePercents: {meta:40, reserva:10, livre:50},
       categories: [
         {id:'c1', name:'Uber', cap:80},
@@ -350,7 +349,26 @@
     showToast._t = setTimeout(()=>t.classList.remove('show'), 2200);
   }
   function monthKey(d){ return d.slice(0,7); }
-  function activeGoal(){ return state.goals.find(g=>g.id===state.activeGoalId) || state.goals[0]; }
+
+  // Múltiplas metas simultâneas, com prioridade = ordem no array state.goals
+  // (a primeira é a de maior prioridade). O total acumulado em "Meta" (soma de
+  // todos os lançamentos) é distribuído em cascata: enche a meta 1 até o alvo,
+  // depois a 2, e assim por diante.
+  function computeGoalProgress(){
+    const t = computeTotals();
+    let remaining = t.meta;
+    return state.goals.map(g=>{
+      const target = Number(g.target)||0;
+      const saved = Math.max(0, Math.min(target, remaining));
+      remaining -= saved;
+      return { ...g, saved, pct: target>0 ? saved/target : 0 };
+    });
+  }
+
+  function topGoal(){
+    const progress = computeGoalProgress();
+    return progress.find(g=>g.saved < g.target) || progress[0] || null;
+  }
 
   // Editor de divisão reutilizável (usado ao criar E ao editar uma receita).
   // Mantém Meta/Emergência editáveis, Livre sempre = Receita - Meta - Emergência,
@@ -529,6 +547,20 @@
     return arr;
   }
 
+  function lastNMonthsData(n){
+    const arr = [];
+    const now = new Date();
+    for(let i=n-1;i>=0;i--){
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const ym = d.toISOString().slice(0,7);
+      const receita = monthIncome(ym).reduce((s,e)=>s+Number(e.amount||0),0);
+      const gasto = monthExpenses(ym).reduce((s,e)=>s+Number(e.amount||0),0);
+      const label = d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','');
+      arr.push({ym, label, receita, gasto, sobra: receita-gasto});
+    }
+    return arr;
+  }
+
   function prevMonthKey(ym){
     const [y,m] = ym.split('-').map(Number);
     const d = new Date(y, m-2, 1); // m is 1-indexed, JS month is 0-indexed -> m-1 is current, -1 more for previous
@@ -602,14 +634,14 @@
       }
     }
 
-    // 6) projeção de meta
-    const g = activeGoal();
+    // 6) projeção de meta (considera a meta de maior prioridade ainda não completa)
+    const g = topGoal();
     const t = computeTotals();
-    if(g && t.meta < g.target && state.incomeEntries.length>=3){
+    if(g && g.saved < g.target && state.incomeEntries.length>=3){
       const days = new Set(state.incomeEntries.map(e=>e.date)).size;
       const avgPerDay = t.meta/days;
       if(avgPerDay>0){
-        const faltam = g.target - t.meta;
+        const faltam = g.target - g.saved;
         const diasRestantes = Math.ceil(faltam/avgPerDay);
         const dt = new Date(); dt.setDate(dt.getDate()+diasRestantes);
         out.push({icon:'🏁', text:`No ritmo atual, você bate a meta "${g.name}" em cerca de ${diasRestantes} dias (por volta de ${dt.toLocaleDateString('pt-BR')}).`, weight:2});
@@ -770,9 +802,10 @@
 
   function renderPainel(main){
     const t = computeTotals();
-    const g = activeGoal();
+    const goalProgress = computeGoalProgress();
+    const g = topGoal();
     const ym = todayISO().slice(0,7);
-    const pctGoal = g && g.target>0 ? Math.min(1, t.meta/g.target) : 0;
+    const pctGoal = g && g.target>0 ? Math.min(1, g.saved/g.target) : 0;
     const hour = new Date().getHours();
     const greet = hour<12?'Bom dia':(hour<18?'Boa tarde':'Boa noite');
     const gastoMes = monthExpenses(ym).reduce((s,e)=>s+Number(e.amount||0),0);
@@ -803,9 +836,9 @@
           </div>
           <div style="width:1px;align-self:stretch;background:var(--border);"></div>
           <div style="text-align:center;">
-            <h3>Meta</h3>
+            <h3>Meta prioritária</h3>
             ${jarSVG(pctGoal, 'var(--primary)')}
-            <div class="jar-value" style="margin-top:6px;">${fmt(t.meta)}</div>
+            <div class="jar-value" style="margin-top:6px;">${fmt(g?g.saved:0)}</div>
             <div class="meta">${g?g.name:'—'}</div>
           </div>
         </div>
@@ -814,6 +847,24 @@
       <div class="card" style="margin-top:14px;">
         <h3>Sugestões</h3>
         ${insights.map(i=>`<div class="insight"><span class="dot">${i.icon}</span><span>${i.text}</span></div>`).join('')}
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Metas <span class="hint" style="text-transform:none;font-weight:400;">(por prioridade — dinheiro enche a 1ª, depois a 2ª...)</span></h3>
+        ${goalProgress.length===0? '<div class="empty">Nenhuma meta cadastrada.</div>' :
+          goalProgress.map((gp,idx)=>{
+            const pct = gp.target>0 ? Math.min(1, gp.saved/gp.target) : 0;
+            return `<div class="list-item">
+              <div>
+                <div><b>${idx+1}. ${gp.name}</b></div>
+                <div class="meta">${fmt(gp.saved)} de ${fmt(gp.target)} (${(pct*100).toFixed(1)}%)</div>
+              </div>
+              <div style="width:100px;">
+                <div class="progress-outer"><div class="progress-inner" style="width:${(pct*100).toFixed(0)}%"></div></div>
+              </div>
+            </div>`;
+          }).join('')
+        }
       </div>
 
       <div class="card" style="margin-top:14px;">
@@ -1289,6 +1340,8 @@
     const data = last14DaysData();
     const maxAbs = Math.max(1, ...data.map(d=>Math.abs(d.net)));
     const t = computeTotals();
+    const monthsData = lastNMonthsData(6);
+    const maxMonthVal = Math.max(1, ...monthsData.flatMap(m=>[m.receita, m.gasto, Math.abs(m.sobra)]));
 
     main.innerHTML = `
       <h1 class="page-title">Gráficos</h1>
@@ -1309,9 +1362,34 @@
       </div>
 
       <div class="card" style="margin-top:14px;">
+        <h3>Comparativo mês a mês</h3>
+        ${monthsData.every(m=>m.receita===0 && m.gasto===0) ? '<div class="empty">Sem dados ainda.</div>' : `
+        <div style="display:flex;align-items:flex-end;gap:14px;height:150px;padding-top:10px;overflow-x:auto;">
+          ${monthsData.map(m=>{
+            const hReceita = Math.max(m.receita>0?3:0, Math.round((m.receita/maxMonthVal)*110));
+            const hGasto = Math.max(m.gasto>0?3:0, Math.round((m.gasto/maxMonthVal)*110));
+            const hSobra = Math.max(Math.abs(m.sobra)>0?3:0, Math.round((Math.abs(m.sobra)/maxMonthVal)*110));
+            return `<div style="display:flex;flex-direction:column;align-items:center;min-width:60px;flex-shrink:0;">
+              <div style="display:flex;align-items:flex-end;gap:3px;height:110px;">
+                <div title="Receita ${fmt(m.receita)}" style="width:14px;background:var(--primary);border-radius:3px 3px 0 0;height:${hReceita}px;"></div>
+                <div title="Gasto ${fmt(m.gasto)}" style="width:14px;background:var(--danger);border-radius:3px 3px 0 0;height:${hGasto}px;"></div>
+                <div title="Sobra ${fmt(m.sobra)}" style="width:14px;background:${m.sobra<0?'var(--warning)':'var(--accent)'};border-radius:3px 3px 0 0;height:${hSobra}px;"></div>
+              </div>
+              <div class="lbl" style="margin-top:6px;">${m.label}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--primary)"></span>Receita</span>
+          <span><span class="swatch" style="background:var(--danger)"></span>Gasto</span>
+          <span><span class="swatch" style="background:var(--accent)"></span>Sobra</span>
+        </div>`}
+      </div>
+
+      <div class="card" style="margin-top:14px;">
         <h3>Total geral acumulado</h3>
         <div class="row-between">
-          <div>Moto/Meta: <b>${fmt(t.meta)}</b></div>
+          <div>Metas: <b>${fmt(t.meta)}</b></div>
           <div>Reserva: <b>${fmt(t.reserva)}</b></div>
           <div>Livre: <b>${fmt(t.livre)}</b></div>
         </div>
@@ -1373,7 +1451,7 @@
   function buildReportText(){
     const ym = todayISO().slice(0,7);
     const t = computeTotals();
-    const g = activeGoal();
+    const goalProgress = computeGoalProgress();
     const incs = monthIncome(ym);
     const exps = monthExpenses(ym);
     const gastoMes = exps.reduce((s,e)=>s+Number(e.amount||0),0);
@@ -1386,7 +1464,9 @@
     txt += `Renda do mês: ${fmt(rendaMes)}\n`;
     txt += `Total gasto no mês: ${fmt(gastoMes)}\n\n`;
     txt += `SALDOS ATUAIS\n`;
-    txt += `- ${g?g.name:'Meta'}: ${fmt(t.meta)} de ${fmt(g?g.target:0)} (${g&&g.target>0?((t.meta/g.target)*100).toFixed(1):'0.0'}%)\n`;
+    goalProgress.forEach((gp,idx)=>{
+      txt += `- Meta ${idx+1} (${gp.name}): ${fmt(gp.saved)} de ${fmt(gp.target)} (${gp.target>0?((gp.saved/gp.target)*100).toFixed(1):'0.0'}%)\n`;
+    });
     txt += `- Reserva: ${fmt(t.reserva)}\n`;
     txt += `- Dinheiro livre: ${fmt(t.livre)}\n`;
     txt += `- TOTAL GERAL: ${fmt(t.total)}\n\n`;
@@ -1432,16 +1512,17 @@
 
       <div class="card" style="margin-top:14px;">
         <h3>Metas</h3>
-        <table class="cfg" id="goalsTable">
-          <tr><th>Nome</th><th>Valor alvo</th><th>Ativa</th><th></th></tr>
-          ${state.goals.map(g=>`
-            <tr data-id="${g.id}">
-              <td><input type="text" class="g-name" value="${g.name}"/></td>
-              <td><input type="number" class="g-target" value="${g.target}"/></td>
-              <td><input type="radio" name="activeGoal" class="g-active" ${state.activeGoalId===g.id?'checked':''}/></td>
-              <td><button class="icon-btn g-del">✕</button></td>
-            </tr>`).join('')}
-        </table>
+        <div class="hint" style="margin-bottom:10px;">Segure o ⠿ e arraste pra definir a prioridade — a 1ª da lista enche primeiro.</div>
+        <div id="goalsList">
+          ${state.goals.map((g,idx)=>`
+            <div class="goal-row" data-id="${g.id}" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+              <span class="drag-handle" style="cursor:grab;color:var(--muted);font-size:18px;line-height:1;touch-action:none;">⠿</span>
+              <span class="tag" style="flex-shrink:0;">${idx+1}º</span>
+              <input type="text" class="g-name" value="${g.name}" style="flex:2;"/>
+              <input type="number" class="g-target" value="${g.target}" style="flex:1;"/>
+              <button class="icon-btn g-del" title="Excluir">✕</button>
+            </div>`).join('')}
+        </div>
         <button class="btn secondary small add-row" id="addGoal">+ Nova meta</button>
       </div>
 
@@ -1466,6 +1547,16 @@
         </div>
         <button class="btn secondary small add-row" id="addCat">+ Nova categoria</button>
         <button class="btn small add-row" id="saveCats" style="margin-left:8px;">Salvar categorias</button>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Backup</h3>
+        <div class="hint" style="margin-bottom:10px;">Exporte um arquivo .json com todos os seus dados (receitas, gastos, metas, categorias, contas). Guarde em local seguro — serve pra restaurar se algo der errado ou pra migrar de conta.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" id="btnExport">Exportar backup (.json)</button>
+          <button class="btn secondary" id="btnImportTrigger">Importar backup (.json)</button>
+          <input type="file" id="importFile" accept="application/json" style="display:none;"/>
+        </div>
       </div>
 
       <div class="card" style="margin-top:14px;border-color:var(--danger);">
@@ -1495,23 +1586,32 @@
       scheduleSave(); renderConfig(main);
     });
     main.querySelectorAll('.g-del').forEach(btn=>btn.addEventListener('click', (ev)=>{
-      const id = ev.target.closest('tr').dataset.id;
+      const id = ev.target.closest('.goal-row').dataset.id;
       if(state.goals.length<=1){ showToast('Mantenha ao menos uma meta.'); return; }
       state.goals = state.goals.filter(g=>g.id!==id);
-      if(state.activeGoalId===id) state.activeGoalId = state.goals[0].id;
       scheduleSave(); renderConfig(main);
     }));
-    main.querySelectorAll('#goalsTable tr[data-id]').forEach(tr=>{
-      tr.querySelector('.g-name').addEventListener('change', e=>{
-        const g = state.goals.find(x=>x.id===tr.dataset.id); g.name=e.target.value; scheduleSave();
+    main.querySelectorAll('#goalsList .goal-row').forEach(row=>{
+      row.querySelector('.g-name').addEventListener('change', e=>{
+        const g = state.goals.find(x=>x.id===row.dataset.id); g.name=e.target.value; scheduleSave();
       });
-      tr.querySelector('.g-target').addEventListener('change', e=>{
-        const g = state.goals.find(x=>x.id===tr.dataset.id); g.target=Number(e.target.value)||0; scheduleSave();
-      });
-      tr.querySelector('.g-active').addEventListener('change', ()=>{
-        state.activeGoalId = tr.dataset.id; scheduleSave();
+      row.querySelector('.g-target').addEventListener('change', e=>{
+        const g = state.goals.find(x=>x.id===row.dataset.id); g.target=Number(e.target.value)||0; scheduleSave();
       });
     });
+    if(window.Sortable){
+      Sortable.create(document.getElementById('goalsList'), {
+        handle: '.drag-handle',
+        animation: 150,
+        onEnd: function(){
+          const ids = Array.from(document.querySelectorAll('#goalsList .goal-row')).map(r=>r.dataset.id);
+          state.goals = ids.map(id => state.goals.find(g=>g.id===id)).filter(Boolean);
+          scheduleSave();
+          showToast('Prioridade das metas atualizada.');
+          renderConfig(main);
+        }
+      });
+    }
 
     document.getElementById('addCat').addEventListener('click', ()=>{
       state.categories.push({id:uid(), name:'Nova categoria', cap:0});
@@ -1546,6 +1646,64 @@
     }
 
     document.getElementById('btnLogout').addEventListener('click', doLogout);
+
+    document.getElementById('btnExport').addEventListener('click', ()=>{
+      const payload = {
+        app: 'financas-moto',
+        exportedAt: new Date().toISOString(),
+        version: 1,
+        data: state
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0,10);
+      a.href = url;
+      a.download = `financas-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('Backup exportado.');
+    });
+
+    const importFileEl = document.getElementById('importFile');
+    document.getElementById('btnImportTrigger').addEventListener('click', ()=> importFileEl.click());
+    importFileEl.addEventListener('change', ()=>{
+      const file = importFileEl.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        let parsed;
+        try{
+          parsed = JSON.parse(reader.result);
+        }catch(err){
+          showToast('Arquivo inválido: não é um JSON válido.');
+          importFileEl.value = '';
+          return;
+        }
+        const incoming = parsed && parsed.data ? parsed.data : parsed;
+        if(!incoming || !Array.isArray(incoming.incomeEntries) || !Array.isArray(incoming.expenseEntries)){
+          showToast('Arquivo não parece ser um backup válido deste app.');
+          importFileEl.value = '';
+          return;
+        }
+        if(!confirm('Importar vai SUBSTITUIR todos os dados atuais pelos do arquivo. Essa ação não pode ser desfeita. Continuar?')){
+          importFileEl.value = '';
+          return;
+        }
+        state = Object.assign(defaultState(), incoming);
+        scheduleSave();
+        showToast('Backup importado com sucesso.');
+        importFileEl.value = '';
+        render();
+      };
+      reader.onerror = ()=>{
+        showToast('Erro ao ler o arquivo.');
+        importFileEl.value = '';
+      };
+      reader.readAsText(file);
+    });
 
     document.getElementById('resetAll').addEventListener('click', ()=>{
       if(confirm('Isso vai apagar todos os lançamentos, metas e configurações. Tem certeza?')){
