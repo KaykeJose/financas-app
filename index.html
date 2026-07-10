@@ -354,13 +354,17 @@
   // Editor de divisão reutilizável (usado ao criar E ao editar uma receita).
   // Mantém Meta/Emergência editáveis, Livre sempre = Receita - Meta - Emergência,
   // nunca permite negativos nem soma acima da receita.
+  // Meta/Emergência/Livre são todos editáveis. Livre continua sendo calculado
+  // automaticamente (Receita - Meta - Emergência) até o usuário digitar um valor
+  // nele; a partir daí o valor digitado é respeitado e propagado pro sistema todo.
   function makeSplitEditor(prefix, amountInputId, initial){
     let manualMeta = !!(initial && initial.meta!=null);
     let manualReserva = !!(initial && initial.reserva!=null);
+    let manualLivre = false;
     const amountEl = document.getElementById(amountInputId);
     const metaEl = document.getElementById(prefix+'Meta');
     const reservaEl = document.getElementById(prefix+'Reserva');
-    const livreEl = document.getElementById(prefix+'LivreDisplay');
+    const livreEl = document.getElementById(prefix+'Livre');
 
     if(initial){
       if(initial.meta!=null) metaEl.value = Number(initial.meta).toFixed(2);
@@ -377,8 +381,14 @@
       reserva = Math.min(reserva, Math.max(0, amount - meta));
       metaEl.value = meta.toFixed(2);
       reservaEl.value = reserva.toFixed(2);
-      const livre = Math.max(0, amount - meta - reserva);
-      livreEl.textContent = fmt(livre);
+
+      let livre;
+      if(manualLivre){
+        livre = Math.max(0, Math.min(amount, Number(livreEl.value)||0));
+      } else {
+        livre = Math.max(0, amount - meta - reserva);
+      }
+      livreEl.value = livre.toFixed(2);
       return { meta, reserva, livre };
     }
 
@@ -392,6 +402,7 @@
     amountEl.addEventListener('input', applyDefaults);
     metaEl.addEventListener('input', ()=>{ manualMeta = true; clampAndRender(); });
     reservaEl.addEventListener('input', ()=>{ manualReserva = true; clampAndRender(); });
+    livreEl.addEventListener('input', ()=>{ manualLivre = true; clampAndRender(); });
     clampAndRender();
 
     return { getValues: clampAndRender };
@@ -703,7 +714,7 @@
         <div class="grid cols-3" style="margin-top:8px;">
           <div><label class="field">Meta (R$)</label><input type="number" id="editMeta" step="0.01"/></div>
           <div><label class="field">Emergência (R$)</label><input type="number" id="editReserva" step="0.01"/></div>
-          <div><label class="field">Livre (R$)</label><div class="money sm" id="editLivreDisplay" style="padding:11px 0;">R$ 0,00</div></div>
+          <div><label class="field">Livre (R$)</label><input type="number" id="editLivre" step="0.01"/></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:14px;">
           <button class="btn" style="flex:1;" id="editSave">Salvar</button>
@@ -1156,7 +1167,7 @@
         <div class="grid cols-3" style="margin-top:8px;">
           <div><label class="field">Meta (R$)</label><input type="number" id="recMeta" step="0.01" value="0"/></div>
           <div><label class="field">Emergência (R$)</label><input type="number" id="recReserva" step="0.01" value="0"/></div>
-          <div><label class="field">Livre (R$)</label><div class="money sm" id="recLivreDisplay" style="padding:11px 0;">R$ 0,00</div></div>
+          <div><label class="field">Livre (R$)</label><input type="number" id="recLivre" step="0.01"/></div>
         </div>
 
         <button class="btn block" style="margin-top:16px;" id="btnSaveReceita">Salvar Receita</button>
