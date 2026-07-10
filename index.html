@@ -821,20 +821,21 @@
         </div>
       </div>
 
-      <div class="grid cols-3" style="margin-top:14px;">
+      <div class="grid cols-2" style="margin-top:14px;">
         <div class="card">
           <h3>Saldo livre</h3>
           <div class="money ${t.livre<0?'neg':'pos'}">${fmt(t.livre)}</div>
         </div>
         <div class="card">
-          <h3>Progresso da meta</h3>
-          <div class="money">${(pctGoal*100).toFixed(1)}%</div>
-          <div class="progress-outer"><div class="progress-inner" style="width:${(pctGoal*100).toFixed(1)}%"></div></div>
-        </div>
-        <div class="card">
           <h3>Média de gasto/dia</h3>
           <div class="money sm">${fmt(media)}</div>
         </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Progresso da meta</h3>
+        <div class="money" style="font-size:28px;">${(pctGoal*100).toFixed(1)}%</div>
+        <div class="progress-outer" style="height:16px;margin-top:10px;"><div class="progress-inner" style="width:${(pctGoal*100).toFixed(1)}%"></div></div>
       </div>
 
       <div class="grid cols-2" style="margin-top:14px;">
@@ -1063,11 +1064,6 @@
       </div>
 
       <div class="card" style="margin-top:14px;">
-        <h3>Suas contas</h3>
-        ${state.recurringBills.length===0 ? '<div class="empty">Nenhuma conta cadastrada ainda.</div>' : rows}
-      </div>
-
-      <div class="card" style="margin-top:14px;">
         <h3>Adicionar nova conta</h3>
         <label class="field">Nome</label>
         <input type="text" id="billName" placeholder="ex: Conta de luz" />
@@ -1076,6 +1072,11 @@
         <label class="field">Dia do vencimento</label>
         <input type="number" id="billDueDay" min="1" max="31" placeholder="ex: 10" />
         <button class="btn block" style="margin-top:16px;" id="btnAddBill">+ Adicionar conta</button>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Suas contas</h3>
+        ${state.recurringBills.length===0 ? '<div class="empty">Nenhuma conta cadastrada ainda.</div>' : rows}
       </div>
     `;
 
