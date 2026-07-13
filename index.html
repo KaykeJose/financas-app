@@ -232,7 +232,8 @@
         {id:'c7', name:'Outros', cap:0}
       ],
       paymentMethods: ['Dinheiro livre','Cartão de crédito','Pix','Dinheiro físico'],
-      livreManual: null,
+      livreAdjust: 0,
+      migratedContasFixasCat: false,
       incomeEntries: [],
       expenseEntries: [],
       recurringBills: [],
@@ -275,9 +276,14 @@
       showToast('Não consegui carregar seus dados agora.');
       state = defaultState();
     }
-    // migração: garante categoria de Contas Fixas e listas novas em dados antigos
-    if(!state.categories.some(c=>c.id==='ccontas')){
-      state.categories.push({id:'ccontas', name:'Contas Fixas', cap:0});
+    // migração: garante categoria de Contas Fixas só na primeira vez.
+    // Depois disso, se o usuário excluir a categoria, ela não volta sozinha.
+    if(!state.migratedContasFixasCat){
+      if(!state.categories.some(c=>c.id==='ccontas')){
+        state.categories.push({id:'ccontas', name:'Contas Fixas', cap:0});
+      }
+      state.migratedContasFixasCat = true;
+      scheduleSave();
     }
     if(!state.recurringBills) state.recurringBills = [];
     if(!state.billPayments) state.billPayments = [];
@@ -436,8 +442,9 @@
     });
     const gastoTotal = state.expenseEntries.reduce((s,e)=>s+Number(e.amount||0),0);
     const livreAuto = livreIn - gastoTotal;
-    const livre = (state.livreManual!=null) ? state.livreManual : livreAuto;
-    return {meta, reserva, livre, livreAuto, isManualLivre: state.livreManual!=null, total: meta+reserva+livre};
+    const adjust = state.livreAdjust||0;
+    const livre = livreAuto + adjust;
+    return {meta, reserva, livre, livreAuto, isManualLivre: adjust!==0, total: meta+reserva+livre};
   }
 
   function monthExpenses(ym){
@@ -1029,14 +1036,17 @@
       if(saveBtn) saveBtn.addEventListener('click', ()=>{
         const val = Number(document.getElementById('livreManualInput').value);
         if(isNaN(val)){ showToast('Informe um valor válido.'); return; }
-        state.livreManual = val;
+        // Guarda a diferença (ajuste) em relação ao automático de agora, não o valor travado.
+        // Assim, novos lançamentos continuam somando/subtraindo normalmente depois disso.
+        const tNow = computeTotals();
+        state.livreAdjust = val - tNow.livreAuto;
         scheduleSave();
-        showToast('Saldo livre ajustado manualmente.');
+        showToast('Saldo livre ajustado. Novos lançamentos continuam atualizando normalmente.');
         renderPainel(main);
       });
       const autoBtn = document.getElementById('livreManualAuto');
       if(autoBtn) autoBtn.addEventListener('click', ()=>{
-        state.livreManual = null;
+        state.livreAdjust = 0;
         scheduleSave();
         showToast('Saldo livre voltou ao automático.');
         renderPainel(main);
