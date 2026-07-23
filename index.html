@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Finanças</title>
 <link rel="manifest" href="manifest.json" />
-<meta name="theme-color" content="#1B7A43" />
+<meta name="theme-color" content="#0FBE7E" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -15,13 +15,13 @@
 <style>
   :root{
     --bg:#FFFFFF;
-    --surface:#F3FAF6;
-    --surface-2:#E8F5EC;
-    --border:#D8EAE0;
-    --primary:#1B7A43;
-    --primary-dark:#125C31;
-    --accent:#34A65F;
-    --ink:#15271C;
+    --surface:#EAFBF3;
+    --surface-2:#D8F7E7;
+    --border:#B9EFD3;
+    --primary:#0FBE7E;
+    --primary-dark:#0B8F5F;
+    --accent:#21F1A8;
+    --ink:#171717;
     --muted:#5E7568;
     --danger:#C1432B;
     --danger-soft:#FBEAE6;
@@ -33,13 +33,13 @@
     --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', monospace;
   }
   html[data-theme="dark"]{
-    --bg:#0F1712;
-    --surface:#16211A;
-    --surface-2:#1D2B22;
-    --border:#2A3A2F;
-    --primary:#3DBE72;
-    --primary-dark:#2E9A5C;
-    --accent:#4CC97D;
+    --bg:#171717;
+    --surface:#1E1E1E;
+    --surface-2:#262626;
+    --border:#333333;
+    --primary:#21F1A8;
+    --primary-dark:#17C88A;
+    --accent:#21F1A8;
     --ink:#EAF3ED;
     --muted:#8FA79A;
     --danger:#E2604A;
@@ -80,7 +80,7 @@
     transition:background-color .18s ease, color .18s ease, box-shadow .18s ease;
   }
   nav.rail button:hover{background:var(--surface-2);color:var(--ink);}
-  nav.rail button.active{background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(27,122,67,0.3);}
+  nav.rail button.active{background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(15,190,126,0.3);}
   nav.rail .ico{width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   nav.rail .ico svg{width:18px;height:18px;}
 
@@ -157,11 +157,11 @@
   .heart-msg{ transition:opacity .3s ease; }
 
   .btn{background:var(--primary);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-weight:700;font-size:14px;
-    box-shadow:0 2px 6px rgba(27,122,67,0.28);
+    box-shadow:0 2px 6px rgba(15,190,126,0.28);
     transition:background-color .18s ease, transform .12s ease, box-shadow .18s ease;}
   .btn:active{transform:scale(0.97);}
   @media (hover:hover){
-    .btn:hover{transform:translateY(-1px); box-shadow:0 5px 14px rgba(27,122,67,0.32);}
+    .btn:hover{transform:translateY(-1px); box-shadow:0 5px 14px rgba(15,190,126,0.32);}
   }
   .btn:hover{background:var(--primary-dark);}
   .btn.secondary{background:var(--bg);color:var(--primary-dark);border:1px solid var(--primary);box-shadow:none;}
@@ -500,7 +500,7 @@
   const HEART_MOODS = {
     excelente: {
       label: 'Excelente',
-      color: '#1B7A43',
+      color: '#0FBE7E',
       duration: 2.6,
       vibrate: false,
       messages: [
@@ -1475,7 +1475,7 @@
   }
 
   /* ---------------- Gráficos ---------------- */
-  const CAT_COLORS = ['#1B7A43','#34A65F','#C9871E','#C1432B','#2E86AB','#8E5572','#4C6E5D','#B08968','#6C5B7B','#118AB2','#EF476F','#8D6A9F'];
+  const CAT_COLORS = ['#0FBE7E','#21F1A8','#C9871E','#C1432B','#2E86AB','#8E5572','#4C6E5D','#B08968','#6C5B7B','#118AB2','#EF476F','#8D6A9F'];
 
   function buildDonutSvg(items, total){
     const r = 52, cx = 64, cy = 64, sw = 18;
