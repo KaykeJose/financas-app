@@ -267,7 +267,9 @@
       incomeEntries: [],
       expenseEntries: [],
       recurringBills: [],
-      billPayments: []
+      billPayments: [],
+      notes: [],
+      loans: []
     };
   }
 
@@ -317,6 +319,8 @@
     }
     if(!state.recurringBills) state.recurringBills = [];
     if(!state.billPayments) state.billPayments = [];
+    if(!state.notes) state.notes = [];
+    if(!state.loans) state.loans = [];
     render();
   }
 
@@ -377,7 +381,17 @@
     n = Number(n)||0;
     return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){
+    // Antes usava new Date().toISOString(), que é baseada em UTC. No horário de
+    // Brasília (UTC-3), das ~21h às 23h59 a data em UTC já é a de amanhã, então
+    // "hoje" nos campos de data e nos gráficos vinha errado (um dia à frente).
+    // Agora monta a data com os componentes locais do aparelho.
+    const d = new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function localISO(d){
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
   function showToast(msg){
     const t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
@@ -415,7 +429,12 @@
   function makeSplitEditor(prefix, amountInputId, initial){
     let manualMeta = !!(initial && initial.meta!=null);
     let manualReserva = !!(initial && initial.reserva!=null);
-    let manualLivre = false;
+    // Antes isso começava sempre em false, então ao editar uma receita cujo
+    // "Livre" tinha sido ajustado manualmente na criação, o valor era
+    // recalculado (Receita - Meta - Emergência) e o ajuste manual se perdia
+    // silenciosamente. Agora, se um valor de Livre é passado em `initial`,
+    // ele é respeitado como manual desde a abertura do editor.
+    let manualLivre = !!(initial && initial.livre!=null);
     const amountEl = document.getElementById(amountInputId);
     const metaEl = document.getElementById(prefix+'Meta');
     const reservaEl = document.getElementById(prefix+'Reserva');
@@ -424,6 +443,7 @@
     if(initial){
       if(initial.meta!=null) metaEl.value = Number(initial.meta).toFixed(2);
       if(initial.reserva!=null) reservaEl.value = Number(initial.reserva).toFixed(2);
+      if(initial.livre!=null) livreEl.value = Number(initial.livre).toFixed(2);
     }
 
     function getAmount(){ return Math.max(0, Number(amountEl.value)||0); }
@@ -576,7 +596,7 @@
     const arr = [];
     for(let i=13;i>=0;i--){
       const d = new Date(); d.setDate(d.getDate()-i);
-      const iso = d.toISOString().slice(0,10);
+      const iso = localISO(d);
       const inc = state.incomeEntries.filter(e=>e.date===iso).reduce((s,e)=>s+(e.split.livre||0),0);
       const out = state.expenseEntries.filter(e=>e.date===iso).reduce((s,e)=>s+Number(e.amount||0),0);
       arr.push({date:iso, net: inc-out});
@@ -717,11 +737,24 @@
     } else if(filterPeriodo==='mes_passado'){
       const ym = prevMonthKey(todayISO().slice(0,7));
       list = list.filter(e=>monthKey(e.date)===ym);
+    } else if(filterPeriodo==='recentes'){
+      // Antes isto juntava receitas+gastos e cortava pros 6 mais recentes no total.
+      // Bug: se você lança poucas receitas (ex: 1 salário no dia 1) e vários gastos
+      // depois, os gastos ocupavam todas as 6 vagas e a receita sumia da lista,
+      // só reaparecendo no filtro "Todos". Agora garante um recorte recente de
+      // cada tipo, então receitas recentes nunca somem sozinhas.
+      const byDateDesc = (a,b)=> (a.date+a.id) < (b.date+b.id) ? 1 : -1;
+      const hasIn = filterTipo!=='gastos';
+      const hasOut = filterTipo!=='receitas';
+      const cap = (hasIn && hasOut) ? 4 : 8;
+      const recentIn = hasIn ? list.filter(e=>e.kind==='in').sort(byDateDesc).slice(0,cap) : [];
+      const recentOut = hasOut ? list.filter(e=>e.kind==='out').sort(byDateDesc).slice(0,cap) : [];
+      list = [...recentIn, ...recentOut];
     }
 
     list.sort((a,b)=> (a.date+a.id) < (b.date+b.id) ? 1 : -1);
 
-    if(filterPeriodo==='recentes') list = list.slice(0,6);
+    if(filterPeriodo==='recentes') list = list.slice(0,8);
 
     return list;
   }
@@ -733,7 +766,8 @@
     graficos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>',
     calendario: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>',
     relatorio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2h7l5 5v15H7z"/><path d="M14 2v5h5M9 13h6M9 17h6"/></svg>',
-    config: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>'
+    config: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
+    notas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>'
   };
   const THEME_ICONS = {
     sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -762,6 +796,7 @@
     {id:'graficos', label:'Gráficos', ico:ICONS.graficos},
     {id:'calendario', label:'Calendário', ico:ICONS.calendario},
     {id:'relatorio', label:'Relatório', ico:ICONS.relatorio},
+    {id:'notas', label:'Anotações', ico:ICONS.notas},
     {id:'config', label:'Config', ico:ICONS.config}
   ];
 
@@ -795,6 +830,7 @@
     if(activeTab==='graficos') return renderGraficos(main);
     if(activeTab==='calendario') return renderCalendario(main);
     if(activeTab==='relatorio') return renderRelatorio(main);
+    if(activeTab==='notas') return renderNotas(main);
     if(activeTab==='config') return renderConfig(main);
   }
 
@@ -1148,7 +1184,9 @@
     if(editingEntry && editingEntry.kind==='in'){
       const e = state.incomeEntries.find(x=>x.id===editingEntry.id);
       if(e){
-        const editSplit = makeSplitEditor('edit', 'editAmount', {meta:e.split.meta, reserva:e.split.reserva});
+        const autoLivre = Math.max(0, Number(e.amount||0) - Number(e.split.meta||0) - Number(e.split.reserva||0));
+        const isLivreManual = Math.abs(Number(e.split.livre||0) - autoLivre) > 0.005;
+        const editSplit = makeSplitEditor('edit', 'editAmount', {meta:e.split.meta, reserva:e.split.reserva, livre: isLivreManual ? e.split.livre : null});
         document.getElementById('editTipo').addEventListener('change', (ev)=>{
           const isMensal = ev.target.value==='mensal';
           document.getElementById('editDateFreWrap').style.display = isMensal?'none':'block';
@@ -1687,6 +1725,133 @@
   }
 
   /* ---------------- Configurações ---------------- */
+  /* ---------------- Anotações ---------------- */
+  function renderNotas(main){
+    const notesRows = [...state.notes].sort((a,b)=> b.date < a.date ? -1 : 1).map(n=>`
+      <div class="list-item" data-note="${n.id}">
+        <div style="flex:1;min-width:0;">
+          <div style="white-space:pre-wrap;word-break:break-word;">${n.text}</div>
+          <div class="meta">${n.date.slice(8,10)}/${n.date.slice(5,7)}/${n.date.slice(0,4)}</div>
+        </div>
+        <button class="icon-btn" data-del-note="${n.id}" title="Excluir">✕</button>
+      </div>
+    `).join('');
+
+    const loansRows = [...state.loans].sort((a,b)=> b.date < a.date ? -1 : 1).map(l=>{
+      const total = Number(l.installmentsTotal||1);
+      const paid = Math.min(Number(l.installmentsPaid||0), total);
+      const remaining = total - paid;
+      const quitado = remaining<=0;
+      const parcelaValor = total>0 ? (Number(l.amount||0)/total) : Number(l.amount||0);
+      return `<div class="list-item" data-loan="${l.id}" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div style="display:flex;justify-content:space-between;gap:10px;">
+          <div>
+            <div><b>${l.person}</b> ${quitado?'<span class="tag">Quitado</span>':''}</div>
+            <div class="meta">Emprestado em ${l.date.slice(8,10)}/${l.date.slice(5,7)}/${l.date.slice(0,4)} · ${fmt(Number(l.amount||0))}${total>1?` em ${total}x de ${fmt(parcelaValor)}`:''}</div>
+            ${l.note?`<div class="meta">${l.note}</div>`:''}
+          </div>
+          <button class="icon-btn" data-del-loan="${l.id}" title="Excluir">✕</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div class="meta">${quitado?'Todas as parcelas pagas':`Faltam ${remaining} de ${total} parcela${total>1?'s':''}`}</div>
+          <div style="display:flex;gap:6px;">
+            <button class="icon-btn" data-loan-minus="${l.id}" ${paid<=0?'disabled':''} title="Uma parcela a menos">−</button>
+            <button class="btn small" data-loan-plus="${l.id}" ${quitado?'disabled':''}>Marcar parcela paga</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    main.innerHTML = `
+      <h1 class="page-title">Anotações</h1>
+      <div class="subtitle">Observações gerais e empréstimos que você fez para outras pessoas.</div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Nova anotação</h3>
+        <textarea id="noteText" rows="3" placeholder="Escreva uma observação..." style="width:100%;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);"></textarea>
+        <button class="btn block" style="margin-top:12px;" id="btnAddNote">+ Adicionar anotação</button>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Suas anotações</h3>
+        ${state.notes.length===0 ? '<div class="empty">Nenhuma anotação ainda.</div>' : notesRows}
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Novo empréstimo (dinheiro que você emprestou)</h3>
+        <label class="field">Para quem</label>
+        <input type="text" id="loanPerson" placeholder="ex: João" />
+        <label class="field">Valor total (R$)</label>
+        <input type="number" id="loanAmount" step="0.01" placeholder="0,00" />
+        <label class="field">Número de parcelas</label>
+        <input type="number" id="loanInstallments" min="1" value="1" />
+        <label class="field">Data</label>
+        <input type="date" id="loanDate" value="${todayISO()}" />
+        <label class="field">Observação (opcional)</label>
+        <input type="text" id="loanNote" placeholder="ex: pra pagar conta de luz" />
+        <button class="btn block" style="margin-top:16px;" id="btnAddLoan">+ Registrar empréstimo</button>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h3>Empréstimos ativos</h3>
+        ${state.loans.length===0 ? '<div class="empty">Nenhum empréstimo registrado ainda.</div>' : loansRows}
+      </div>
+    `;
+
+    document.getElementById('btnAddNote').addEventListener('click', ()=>{
+      const text = document.getElementById('noteText').value.trim();
+      if(!text){ showToast('Escreva algo antes de salvar.'); return; }
+      state.notes.push({id:uid(), text, date:todayISO()});
+      scheduleSave();
+      renderNotas(main);
+    });
+
+    main.querySelectorAll('[data-del-note]').forEach(btn=>btn.addEventListener('click', ()=>{
+      if(confirm('Excluir essa anotação?')){
+        state.notes = state.notes.filter(n=>n.id!==btn.dataset.delNote);
+        scheduleSave();
+        renderNotas(main);
+      }
+    }));
+
+    document.getElementById('btnAddLoan').addEventListener('click', ()=>{
+      const person = document.getElementById('loanPerson').value.trim();
+      const amount = Number(document.getElementById('loanAmount').value);
+      const installmentsTotal = Math.max(1, Number(document.getElementById('loanInstallments').value)||1);
+      const date = document.getElementById('loanDate').value || todayISO();
+      const note = document.getElementById('loanNote').value.trim();
+      if(!person){ showToast('Diga pra quem foi o empréstimo.'); return; }
+      if(!amount || amount<=0){ showToast('Informe um valor válido.'); return; }
+      state.loans.push({id:uid(), person, amount, installmentsTotal, installmentsPaid:0, date, note});
+      scheduleSave();
+      showToast('Empréstimo registrado.');
+      renderNotas(main);
+    });
+
+    main.querySelectorAll('[data-del-loan]').forEach(btn=>btn.addEventListener('click', ()=>{
+      if(confirm('Excluir esse empréstimo?')){
+        state.loans = state.loans.filter(l=>l.id!==btn.dataset.delLoan);
+        scheduleSave();
+        renderNotas(main);
+      }
+    }));
+
+    main.querySelectorAll('[data-loan-plus]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const l = state.loans.find(x=>x.id===btn.dataset.loanPlus);
+      const total = Number(l.installmentsTotal||1);
+      l.installmentsPaid = Math.min(total, Number(l.installmentsPaid||0)+1);
+      scheduleSave();
+      renderNotas(main);
+    }));
+
+    main.querySelectorAll('[data-loan-minus]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const l = state.loans.find(x=>x.id===btn.dataset.loanMinus);
+      l.installmentsPaid = Math.max(0, Number(l.installmentsPaid||0)-1);
+      scheduleSave();
+      renderNotas(main);
+    }));
+  }
+
   function renderConfig(main){
     main.innerHTML = `
       <h1 class="page-title">Configurações</h1>
